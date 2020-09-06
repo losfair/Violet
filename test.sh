@@ -4,4 +4,4 @@ CLASH_DIR="/home/zhy/Projects/clash-compiler"
 PROJECT_DIR="$(pwd)"
 
 cd "$CLASH_DIR" || exit 1
-stack run --cwd "$PROJECT_DIR" -- clash --verilog OrangeCore -fconstraint-solver-iterations=100
+stack run --cwd "$PROJECT_DIR" -- clashi OrangeTest/Tests.hs
