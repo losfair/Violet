@@ -17,7 +17,7 @@ fifo' (store, rptr, wptr, pushCap) (witem1, witem2, popReq) = ((store', rptr', w
                     PopOne -> rptr + 1
                     PopTwo -> rptr + 2
         ritem1 = if rptr' == wptr then Bubble else store !! rptr'
-        ritem2 = if rptr' == wptr || rptr' == wptr + 1 then Bubble else store !! (rptr' + 1)
+        ritem2 = if rptr' == wptr || rptr' + 1 == wptr then Bubble else store !! (rptr' + 1)
         willFull = wptr' + 1 == rptr' || wptr' + 2 == rptr' || wptr' + 3 == rptr'
         pushCap' = if willFull then WillFull else CanPush
         store' = case witem1 of
