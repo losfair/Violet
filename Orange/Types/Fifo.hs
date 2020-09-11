@@ -6,8 +6,8 @@ import qualified Orange.Types.DecodeDep as DecodeDep
 
 type FifoBits = 3 :: Nat
 data FifoPushCap = CanPush | WillFull
-    deriving (Generic, NFDataX)
+    deriving (Generic, NFDataX, Eq)
 data FifoPopReq = PopNothing | PopOne | PopTwo
-    deriving (Generic, NFDataX)
+    deriving (Generic, NFDataX, Eq)
 data FifoItem = Item DecodeDep.DecodeDepBundle | Bubble
     deriving (Generic, NFDataX)
