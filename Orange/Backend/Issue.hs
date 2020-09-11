@@ -22,17 +22,17 @@ data ActivationMask = ActivationMask {
     amInt2 :: Bool,
     amBranch :: Bool,
     amMem :: Bool,
-    amCtrl :: Bool
+    amCtrl :: Maybe ControlIssue
 } deriving (Generic, NFDataX)
 
 type IssueInput = (FifoT.FifoItem, FifoT.FifoItem, CtrlT.CtrlAck, MemoryT.MemoryAck)
-type IssueOutput = (FunctionUnitActivation, PipeT.Commit, PipeT.Recovery, FifoT.FifoPopReq)
+type IssueOutput = (FunctionUnitActivation, PipeT.Recovery, FifoT.FifoPopReq)
 
-issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Commit, PipeT.Recovery, FifoT.FifoPopReq))
+issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
-       -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Commit, PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
-issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrlAck, memAck) =
-    ((state', port1', port2', am', (commit', recovery', popReq')), (maskActivation am port1 port2, commit, recovery, popReq))
+       -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
+issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlAck, memAck) =
+    ((state', port1', port2', am', (recovery', popReq')), (maskActivation am port1 port2, recovery, popReq))
     where
         wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
@@ -51,12 +51,14 @@ issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrl
             amInt2 = lookActivation item2 DepT.actInt && canConcurrentIssue item2,
             amBranch = lookActivation item1 DepT.actBranch,
             amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x),
-            amCtrl = lookActivation item1 DepT.actCtrl
+            amCtrl =
+                if lookActivation item1 DepT.actException then Just CtrlDecodeException
+                else if lookActivation item1 DepT.actCtrl then Just CtrlNormal
+                else Nothing
         }
         am' = if pipelineBlocked then emptyActivationMask else amNormal
         popReq' = if pipelineBlocked then FifoT.PopNothing else if canConcurrentIssue item2 then FifoT.PopTwo else FifoT.PopOne
         recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
-        commit' = if lookActivation item1 DepT.actException then PipeT.Exc (lookPCAssumeItem item1, PipeT.DecodeExc) else PipeT.Bubble
         port1' = genIssuePort item1
         port2' = genIssuePort item2
         state' = IssueState { loadActivated = loadActivated', ctrlActivated = ctrlActivated' }
@@ -64,7 +66,7 @@ issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrl
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated = False, ctrlActivated = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.Bubble, PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated = False, ctrlActivated = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
 maskActivation :: ActivationMask -> IssuePort -> IssuePort -> FunctionUnitActivation
 maskActivation mask port1 port2 = FunctionUnitActivation {
@@ -72,7 +74,9 @@ maskActivation mask port1 port2 = FunctionUnitActivation {
     fuInt2 = if amInt2 mask then Just port2 else Nothing,
     fuBranch = if amBranch mask then Just port1 else Nothing,
     fuMem = if amMem mask then Just port1 else Nothing,
-    fuCtrl = if amCtrl mask then Just port1 else Nothing
+    fuCtrl = case amCtrl mask of
+        Just ctrlIssue -> Just (port1, ctrlIssue)
+        Nothing -> Nothing
 }
 
 itemWantsLoadAccess :: FifoT.FifoItem -> Bool
@@ -122,5 +126,5 @@ emptyActivationMask = ActivationMask {
     amInt2 = False,
     amBranch = False,
     amMem = False,
-    amCtrl = False
+    amCtrl = Nothing
 }

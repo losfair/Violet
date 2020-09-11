@@ -8,10 +8,10 @@ data FunctionUnitActivation = FunctionUnitActivation {
     fuInt2 :: Maybe IssuePort,
     fuBranch :: Maybe IssuePort,
     fuMem :: Maybe IssuePort,
-    fuCtrl :: Maybe IssuePort
+    fuCtrl :: Maybe (IssuePort, ControlIssue)
 } deriving (Generic, NFDataX)
 
 type IssuePort = (FetchT.PC, FetchT.Inst, FetchT.Metadata)
 
-data IssueWidth = IssueZero | IssueOne | IssueTwo
+data ControlIssue = CtrlNormal | CtrlDecodeException | CtrlFetchException
     deriving (Generic, NFDataX)
