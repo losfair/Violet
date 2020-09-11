@@ -3,6 +3,7 @@ import Orange.Config
 import qualified Orange.Fifo
 import qualified Orange.Frontend.DecodeDep
 import qualified Orange.Backend.Issue
+import qualified Orange.Backend.Gpr
 
 topEntity :: Clock System -> Reset System -> Enable System
     -> Signal System Bool

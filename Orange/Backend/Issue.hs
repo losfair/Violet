@@ -15,7 +15,7 @@ import qualified Orange.Types.Ctrl as CtrlT
 data IssueState = IssueState {
     loadActivated :: Bool,
     ctrlActivated :: Bool
-}
+} deriving (Generic, NFDataX)
 
 data ActivationMask = ActivationMask {
     amInt1 :: Bool,
@@ -53,20 +53,18 @@ issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrl
             amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x),
             amCtrl = lookActivation item1 DepT.actCtrl
         }
-        amBlocked = ActivationMask {
-            amInt1 = False,
-            amInt2 = False,
-            amBranch = False,
-            amMem = False,
-            amCtrl = False
-        }
-        am' = if pipelineBlocked then amBlocked else amNormal
+        am' = if pipelineBlocked then emptyActivationMask else amNormal
         popReq' = if pipelineBlocked then FifoT.PopNothing else if canConcurrentIssue item2 then FifoT.PopTwo else FifoT.PopOne
         recovery' = if isMispredictionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         commit' = if lookActivation item1 DepT.actException then PipeT.Exc (lookPCAssumeItem item1, PipeT.DecodeExc) else PipeT.Bubble
         port1' = genIssuePort item1
         port2' = genIssuePort item2
         state' = IssueState { loadActivated = loadActivated', ctrlActivated = ctrlActivated' }
+
+issue :: HiddenClockResetEnable dom
+      => Signal dom IssueInput
+      -> Signal dom IssueOutput
+issue = mealy issue' (IssueState { loadActivated = False, ctrlActivated = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.Bubble, PipeT.NotRecovery, FifoT.PopNothing))
 
 maskActivation :: ActivationMask -> IssuePort -> IssuePort -> FunctionUnitActivation
 maskActivation mask port1 port2 = FunctionUnitActivation {
@@ -113,4 +111,16 @@ lookPCAssumeItem item = case item of
 genIssuePort :: FifoT.FifoItem -> IssuePort
 genIssuePort item = case item of
     FifoT.Item (pc, inst, md, _, _, _, _) -> (pc, inst, md)
-    _ -> (0, FetchT.nopInst, FetchT.emptyMetadata)
+    _ -> emptyIssuePort
+
+emptyIssuePort :: IssuePort
+emptyIssuePort = (0, FetchT.nopInst, FetchT.emptyMetadata)
+
+emptyActivationMask :: ActivationMask
+emptyActivationMask = ActivationMask {
+    amInt1 = False,
+    amInt2 = False,
+    amBranch = False,
+    amMem = False,
+    amCtrl = False
+}
