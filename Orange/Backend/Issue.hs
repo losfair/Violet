@@ -36,7 +36,7 @@ issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrl
     where
         wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
-        isMispredictionResolved = itemWantsMispredictionResolution item1
+        isExceptionResolved = itemWantsExceptionResolution item1
 
         loadActivated_ = loadActivated state && memAck /= MemoryT.MemAck
         loadActivated' = loadActivated_ || wantsLoadAccess
@@ -55,7 +55,7 @@ issue' (state, port1, port2, am, (commit, recovery, popReq)) (item1, item2, ctrl
         }
         am' = if pipelineBlocked then emptyActivationMask else amNormal
         popReq' = if pipelineBlocked then FifoT.PopNothing else if canConcurrentIssue item2 then FifoT.PopTwo else FifoT.PopOne
-        recovery' = if isMispredictionResolved then PipeT.IsRecovery else PipeT.NotRecovery
+        recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         commit' = if lookActivation item1 DepT.actException then PipeT.Exc (lookPCAssumeItem item1, PipeT.DecodeExc) else PipeT.Bubble
         port1' = genIssuePort item1
         port2' = genIssuePort item2
@@ -85,9 +85,9 @@ itemWantsCtrlAccess item = case item of
     FifoT.Item (_, _, _, act, _, _, _) -> DepT.actCtrl act
     _ -> False
 
-itemWantsMispredictionResolution :: FifoT.FifoItem -> Bool
-itemWantsMispredictionResolution item = case item of
-    FifoT.Item (_, _, md, _, _, _, _) -> FetchT.branchMispredictionResolved md
+itemWantsExceptionResolution :: FifoT.FifoItem -> Bool
+itemWantsExceptionResolution item = case item of
+    FifoT.Item (_, _, md, _, _, _, _) -> FetchT.exceptionResolved md
     _ -> False
 
 canConcurrentIssue :: FifoT.FifoItem -> Bool
