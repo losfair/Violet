@@ -13,8 +13,8 @@ import qualified Orange.Types.Gpr as GprT
 import qualified Orange.Types.Ctrl as CtrlT
 
 data IssueState = IssueState {
-    loadActivated :: Bool,
-    ctrlActivated :: Bool
+    loadActivated :: BitVector 2,
+    ctrlActivated :: BitVector 2
 } deriving (Generic, NFDataX)
 
 data ActivationMask = ActivationMask {
@@ -25,24 +25,24 @@ data ActivationMask = ActivationMask {
     amCtrl :: Maybe ControlIssue
 } deriving (Generic, NFDataX)
 
-type IssueInput = (FifoT.FifoItem, FifoT.FifoItem, CtrlT.CtrlAck, MemoryT.MemoryAck)
+type IssueInput = (FifoT.FifoItem, FifoT.FifoItem)
 type IssueOutput = (FunctionUnitActivation, PipeT.Recovery, FifoT.FifoPopReq)
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
        -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
-issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlAck, memAck) =
+issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
     ((state', port1', port2', am', (recovery', popReq')), (maskActivation am port1 port2, recovery, popReq))
     where
         wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
         isExceptionResolved = itemWantsExceptionResolution item1
 
-        loadActivated_ = loadActivated state && memAck /= MemoryT.MemAck
-        loadActivated' = loadActivated_ || wantsLoadAccess
+        loadActivated_ = loadActivated state /= 0
+        loadActivated' = slice d0 d0 (loadActivated state) ++# if wantsLoadAccess then 0b1 else 0b0
 
-        ctrlActivated_ = ctrlActivated state && ctrlAck /= CtrlT.CtrlAck
-        ctrlActivated' = ctrlActivated_ || wantsCtrlAccess
+        ctrlActivated_ = ctrlActivated state /= 0
+        ctrlActivated' = slice d0 d0 (ctrlActivated state) ++# if wantsCtrlAccess then 0b1 else 0b0
 
         pipelineBlocked = loadActivated_ || ctrlActivated_
 
@@ -66,7 +66,7 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlAck, mem
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated = False, ctrlActivated = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated = 0, ctrlActivated = 0 }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
 maskActivation :: ActivationMask -> IssuePort -> IssuePort -> FunctionUnitActivation
 maskActivation mask port1 port2 = FunctionUnitActivation {
