@@ -8,6 +8,8 @@ data Metadata = Metadata {
     branchPredicted :: Bool,
     exceptionResolved :: Bool
 } deriving (Generic, NFDataX)
+data BackendCmd = NoCmd | ApplyBranch (PC, Maybe (PC, PredictionPref))
+data PredictionPref = Taken | NotTaken
 
 emptyMetadata :: Metadata
 emptyMetadata = Metadata { branchPredicted = False, exceptionResolved = False }
