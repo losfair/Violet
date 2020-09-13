@@ -10,7 +10,7 @@ data CommitLog = CommitLog {
 
     pc2 :: Maybe FetchT.PC,
     writePort2 :: GprT.WritePort
-} deriving (Generic, NFDataX)
+} deriving (Generic, NFDataX, Show)
 
 emptyCommitLog :: CommitLog
 emptyCommitLog = CommitLog { pc1 = Nothing, writePort1 = Nothing, pc2 = Nothing, writePort2 = Nothing }
