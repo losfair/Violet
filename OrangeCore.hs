@@ -9,6 +9,8 @@ import qualified Orange.Backend.Bypass
 import qualified Orange.Backend.IntAlu
 import qualified Orange.Backend.Branch
 import qualified Orange.Backend.Commit
+import qualified Orange.Backend.DCache
+import qualified Orange.IP.StaticDM
 
 topEntity :: Clock System -> Reset System -> Enable System
     -> Signal System Bool
