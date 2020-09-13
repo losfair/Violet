@@ -6,11 +6,11 @@ import qualified Orange.Types.Gpr as GprT
 import qualified Orange.Types.Issue as IssueT
 import qualified Orange.Types.Fetch as FetchT
 
-branch :: Maybe IssueT.IssuePort
+branch' :: Maybe IssueT.IssuePort
         -> (GprT.RegValue, GprT.RegValue)
         -> PipeT.Commit
-branch Nothing _ = PipeT.Bubble
-branch (Just (pc, inst, meta)) (rs1V, rs2V) = commit
+branch' Nothing _ = PipeT.Bubble
+branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
     where
         mode = slice d3 d2 inst
         rd = GprT.decodeRd inst
@@ -32,6 +32,12 @@ branch (Just (pc, inst, meta)) (rs1V, rs2V) = commit
                     PipeT.Ok (pc, Nothing)
                 else if condSatisfied then PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + relOffset))
                 else PipeT.Exc (pc, PipeT.BranchFalsePos)
+
+branch :: HiddenClockResetEnable dom
+       => Signal dom (Maybe IssueT.IssuePort)
+       -> Signal dom (GprT.RegValue, GprT.RegValue)
+       -> Signal dom PipeT.Commit
+branch a b = fmap (\(a, b) -> branch' a b) $ bundle (a, b)
 
 unsignedLt :: GprT.RegValue -> GprT.RegValue -> Bool
 unsignedLt a b = (unpack a :: Unsigned 32) < (unpack b :: Unsigned 32)

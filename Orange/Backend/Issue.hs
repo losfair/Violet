@@ -17,22 +17,14 @@ data IssueState = IssueState {
     ctrlActivated :: BitVector 2
 } deriving (Generic, NFDataX)
 
-data ActivationMask = ActivationMask {
-    amInt1 :: Bool,
-    amInt2 :: Bool,
-    amBranch :: Bool,
-    amMem :: Bool,
-    amCtrl :: Maybe ControlIssue
-} deriving (Generic, NFDataX)
-
 type IssueInput = (FifoT.FifoItem, FifoT.FifoItem)
-type IssueOutput = (FunctionUnitActivation, PipeT.Recovery, FifoT.FifoPopReq)
+type IssueOutput = (((IssuePort, IssuePort), ActivationMask), PipeT.Recovery, FifoT.FifoPopReq)
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
        -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
 issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
-    ((state', port1', port2', am', (recovery', popReq')), (maskActivation am port1 port2, recovery, popReq))
+    ((state', port1', port2', am', (recovery', popReq')), (((port1, port2), am), recovery, popReq))
     where
         wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
@@ -67,17 +59,6 @@ issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
 issue = mealy issue' (IssueState { loadActivated = 0, ctrlActivated = 0 }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
-
-maskActivation :: ActivationMask -> IssuePort -> IssuePort -> FunctionUnitActivation
-maskActivation mask port1 port2 = FunctionUnitActivation {
-    fuInt1 = if amInt1 mask then Just port1 else Nothing,
-    fuInt2 = if amInt2 mask then Just port2 else Nothing,
-    fuBranch = if amBranch mask then Just port1 else Nothing,
-    fuMem = if amMem mask then Just port1 else Nothing,
-    fuCtrl = case amCtrl mask of
-        Just ctrlIssue -> Just (port1, ctrlIssue)
-        Nothing -> Nothing
-}
 
 itemWantsLoadAccess :: FifoT.FifoItem -> Bool
 itemWantsLoadAccess item = case item of

@@ -15,3 +15,11 @@ type IssuePort = (FetchT.PC, FetchT.Inst, FetchT.Metadata)
 
 data ControlIssue = CtrlNormal | CtrlDecodeException | CtrlFetchException
     deriving (Generic, NFDataX)
+
+data ActivationMask = ActivationMask {
+    amInt1 :: Bool,
+    amInt2 :: Bool,
+    amBranch :: Bool,
+    amMem :: Bool,
+    amCtrl :: Maybe ControlIssue
+} deriving (Generic, NFDataX)

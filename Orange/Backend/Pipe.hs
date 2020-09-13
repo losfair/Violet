@@ -7,16 +7,16 @@ genPipe :: HiddenClockResetEnable dom
      => KnownNat n
      => NFDataX a
      => a
-     -> Signal dom (Vec n a)
-     -> Signal dom (Vec n a)
-genPipe initial = register (repeat initial)
+     -> Vec n (Signal dom a)
+     -> Vec n (Signal dom a)
+genPipe initial = map (register initial)
 
 completionPipe :: HiddenClockResetEnable dom
-               => Signal dom (Vec PipeSize Commit)
-               -> Signal dom (Vec PipeSize Commit)
+               => Vec PipeSize (Signal dom Commit)
+               -> Vec PipeSize (Signal dom Commit)
 completionPipe = genPipe Bubble
 
 recoveryPipe :: HiddenClockResetEnable dom
-             => Signal dom (Vec PipeSize Recovery)
-             -> Signal dom (Vec PipeSize Recovery)
+             => Vec PipeSize (Signal dom Recovery)
+             -> Vec PipeSize (Signal dom Recovery)
 recoveryPipe = genPipe NotRecovery

@@ -1,6 +1,6 @@
 import Clash.Prelude
 import Orange.Config
-import qualified Orange.Fifo
+import qualified Orange.Backend.Fifo
 import qualified Orange.Frontend.DecodeDep
 import qualified Orange.Backend.Issue
 import qualified Orange.Backend.Gpr
@@ -10,6 +10,7 @@ import qualified Orange.Backend.IntAlu
 import qualified Orange.Backend.Branch
 import qualified Orange.Backend.Commit
 import qualified Orange.Backend.DCache
+import qualified Orange.Backend.Wiring
 import qualified Orange.IP.StaticDM
 
 topEntity :: Clock System -> Reset System -> Enable System

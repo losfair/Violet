@@ -1,4 +1,4 @@
-module Orange.Fifo where
+module Orange.Backend.Fifo where
 
 import Clash.Prelude
 import Orange.Types.Fifo

@@ -5,11 +5,11 @@ import qualified Orange.Types.Pipe as PipeT
 import qualified Orange.Types.Gpr as GprT
 import qualified Orange.Types.Issue as IssueT
 
-intAlu :: Maybe IssueT.IssuePort
+intAlu' :: Maybe IssueT.IssuePort
         -> (GprT.RegValue, GprT.RegValue)
         -> PipeT.Commit
-intAlu Nothing _ = PipeT.Bubble
-intAlu (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd out)
+intAlu' Nothing _ = PipeT.Bubble
+intAlu' (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd out)
     where
         rd = GprT.decodeRd inst
         arithFunct3 = slice d14 d12 inst
@@ -36,6 +36,12 @@ intAlu (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd out
         out = case slice d2 d2 inst of
             0b0 -> arithOut
             0b1 -> miscOut
+
+intAlu :: HiddenClockResetEnable dom
+       => Signal dom (Maybe IssueT.IssuePort)
+       -> Signal dom (GprT.RegValue, GprT.RegValue)
+       -> Signal dom PipeT.Commit
+intAlu a b = fmap (\(a, b) -> intAlu' a b) $ bundle (a, b)
 
 extendBoolToReg :: Bool -> GprT.RegValue
 extendBoolToReg False = 0
