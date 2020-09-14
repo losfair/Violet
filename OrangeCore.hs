@@ -14,6 +14,8 @@ import qualified Orange.Backend.Wiring
 import qualified Orange.IP.StaticDM
 import qualified Orange.Gen.BackendGen
 import qualified Orange.Gen.CoreGen
+import qualified Orange.Frontend.ICache
+import qualified Orange.Frontend.PC
 
 topEntity :: Clock System -> Reset System -> Enable System
     -> Signal System Bool

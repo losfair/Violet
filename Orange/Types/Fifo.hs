@@ -15,3 +15,16 @@ data FifoItem = Item DecodeDep.DecodeDepBundle | Bubble
 isBubble :: FifoItem -> Bool
 isBubble (Item _) = False
 isBubble Bubble = True
+
+gatedRegister :: HiddenClockResetEnable dom
+              => NFDataX a
+              => a
+              -> Signal dom FifoPushCap
+              -> Signal dom a
+              -> Signal dom a
+gatedRegister initial pushCap input = reg
+    where
+        reg = register initial (fmap gate $ bundle (pushCap, input, reg))
+        gate (pushCap, input, reg) = case pushCap of
+            CanPush -> input
+            WillFull -> reg

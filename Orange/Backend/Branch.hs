@@ -14,7 +14,6 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
     where
         mode = slice d3 d2 inst
         rd = GprT.decodeRd inst
-        relOffset = signExtend (slice d31 d31 inst ++# slice d7 d7 inst ++# slice d30 d25 inst ++# slice d11 d8 inst) :: BitVector 32
         condSatisfied_ = case slice d14 d13 inst of
             0b00 -> rs1V /= rs2V
             0b10 -> signedLt rs1V rs2V
@@ -23,14 +22,14 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
             0b0 -> condSatisfied_
             0b1 -> not condSatisfied_
         commit = case mode of
-            0b11 -> -- jal: handled by frontend
-                PipeT.Ok (pc, Just $ PipeT.GPR rd (pc + 4))
+            0b11 -> -- jal: should be handled by frontend but not yet
+                PipeT.Exc (pc, PipeT.BranchLink (pc + FetchT.decodeJalOffset inst) rd)
             0b01 -> -- jalr: link
                 PipeT.Exc (pc, PipeT.BranchLink rs1V rd)
             _ -> -- 0b00: bcond
                 if condSatisfied == FetchT.branchPredicted meta then
                     PipeT.Ok (pc, Nothing)
-                else if condSatisfied then PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + relOffset))
+                else if condSatisfied then PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst))
                 else PipeT.Exc (pc, PipeT.BranchFalsePos)
 
 branch :: HiddenClockResetEnable dom

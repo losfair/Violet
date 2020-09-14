@@ -20,3 +20,9 @@ validMetadata = Metadata { branchPredicted = False, exceptionResolved = False, i
 
 nopInst :: Inst
 nopInst = 0b0010011 -- addi x0, x0, 0
+
+decodeRelBrOffset :: Inst -> BitVector 32
+decodeRelBrOffset inst = signExtend (slice d31 d31 inst ++# slice d7 d7 inst ++# slice d30 d25 inst ++# slice d11 d8 inst ++# (0b0 :: BitVector 1))
+
+decodeJalOffset :: Inst -> BitVector 32
+decodeJalOffset inst = signExtend (slice d31 d31 inst ++# slice d19 d12 inst ++# slice d20 d20 inst ++# slice d30 d21 inst ++# (0b0 :: BitVector 1))
