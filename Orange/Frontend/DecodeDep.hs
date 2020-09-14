@@ -59,8 +59,8 @@ decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2)
         (activation2, regLayout2, stall2) = decode inst2
         concurrency1 = dep lastDecoded (inst1, activation1, regLayout1)
         concurrency2 = dep (inst1, activation1, regLayout1) (inst2, activation2, regLayout2)
-        bundle1' = if pushCap == FifoT.CanPush then FifoT.Item (pc1, inst1, md1, activation1, regLayout1, concurrency1, stall1) else FifoT.Bubble
-        bundle2' = if pushCap == FifoT.CanPush then FifoT.Item (pc2, inst2, md2, activation2, regLayout2, concurrency2, stall2) else FifoT.Bubble
+        bundle1' = if pushCap == FifoT.CanPush && FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1, activation1, regLayout1, concurrency1, stall1) else FifoT.Bubble
+        bundle2' = if pushCap == FifoT.CanPush && FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2, activation2, regLayout2, concurrency2, stall2) else FifoT.Bubble
 
 decodeDep :: HiddenClockResetEnable dom
           => Signal dom ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata), FifoT.FifoPushCap)

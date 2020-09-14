@@ -49,7 +49,9 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
                 else Nothing
         }
         am' = if pipelineBlocked then emptyActivationMask else amNormal
-        popReq' = if pipelineBlocked then FifoT.PopNothing else if canConcurrentIssue item2 then FifoT.PopTwo else FifoT.PopOne
+        popReq' = if pipelineBlocked || FifoT.isBubble item1 then FifoT.PopNothing
+                    else if not (canConcurrentIssue item2) || FifoT.isBubble item2 then FifoT.PopOne
+                    else FifoT.PopTwo
         recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         port1' = genIssuePort item1
         port2' = genIssuePort item2

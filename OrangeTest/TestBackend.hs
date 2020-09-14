@@ -20,8 +20,8 @@ makeStream clk rst en = output
     where
         inputs = [
             ((0x0, FetchT.nopInst, FetchT.emptyMetadata), (0x0, FetchT.nopInst, FetchT.emptyMetadata)),
-            ((0x00010000, 0x02a00093, FetchT.emptyMetadata), (0x00010004, 0x00100133, FetchT.emptyMetadata)),
-            ((0x00010008, 0x00208293, FetchT.emptyMetadata), (0x0001000c, 0x00508333, FetchT.emptyMetadata)),
+            ((0x00010000, 0x02a00093, FetchT.validMetadata), (0x00010004, 0x00100133, FetchT.validMetadata)),
+            ((0x00010008, 0x00208293, FetchT.validMetadata), (0x0001000c, 0x00508333, FetchT.validMetadata)),
             ((0x0, FetchT.nopInst, FetchT.emptyMetadata), (0x0, FetchT.nopInst, FetchT.emptyMetadata)),
             ((0x0, FetchT.nopInst, FetchT.emptyMetadata), (0x0, FetchT.nopInst, FetchT.emptyMetadata)),
             ((0x0, FetchT.nopInst, FetchT.emptyMetadata), (0x0, FetchT.nopInst, FetchT.emptyMetadata)),

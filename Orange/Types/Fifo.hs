@@ -11,3 +11,7 @@ data FifoPopReq = PopNothing | PopOne | PopTwo
     deriving (Generic, NFDataX, Eq)
 data FifoItem = Item DecodeDep.DecodeDepBundle | Bubble
     deriving (Generic, NFDataX)
+
+isBubble :: FifoItem -> Bool
+isBubble (Item _) = False
+isBubble Bubble = True
