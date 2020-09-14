@@ -29,7 +29,9 @@ instance DCacheImpl StaticDM where
             readMini = register Nothing (fmap transformReadMini req)
             delayedPC = register 0 (fmap transformPC req)
             delayedRd = register 0 (fmap transformRd req)
-            readResult = fmap transformReadResult $ bundle (rawReadResult, readMini)
+            delayedReadPort = register 0 readPort
+            forwardedReadResult = writeForward delayedReadPort rawReadResult writePortFinal 
+            readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
             commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult)
             writePortD1 = register Nothing writePort
             
@@ -79,6 +81,22 @@ instance DCacheImpl StaticDM where
                 NoWrite -> Nothing
             transformWeReq (Just _) = CanWrite
             transformWeReq Nothing = NoWrite
+
+writeForward :: HiddenClockResetEnable dom
+             => Signal dom ReadPort
+             -> Signal dom (BitVector 8, BitVector 8, BitVector 8, BitVector 8)
+             -> Signal dom WritePort
+             -> Signal dom (BitVector 8, BitVector 8, BitVector 8, BitVector 8)
+writeForward rp input wp = fmap forwardOne $ bundle (wp, rp, input)
+    where
+        forwardOne (Nothing, rp, x) = x
+        forwardOne ((Just (waddr, wdata, wmask)), rp, (b3, b2, b1, b0)) = if valid then (nb3, nb2, nb1, nb0) else (b3, b2, b1, b0)
+            where
+                valid = slice d31 d2 waddr == slice d31 d2 rp
+                nb0 = if testBit wmask 0 then slice d7 d0 wdata else b0
+                nb1 = if testBit wmask 1 then slice d15 d8 wdata else b1
+                nb2 = if testBit wmask 2 then slice d23 d16 wdata else b2
+                nb3 = if testBit wmask 3 then slice d31 d24 wdata else b3
 
 mkRam :: HiddenClockResetEnable dom
       => Signal dom ReadPort
