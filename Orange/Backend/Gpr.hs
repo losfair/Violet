@@ -19,7 +19,7 @@ gpr' (rf, results) ((item1, item2), wp1, wp2) = ((rf', results'), results)
             Nothing -> rf_
         (r1, r2) = fifoItemToRegIndices item1
         (r3, r4) = fifoItemToRegIndices item2
-        results' = ((regFetch rf r1, regFetch rf r2), (regFetch rf r3, regFetch rf r4))
+        results' = ((regFetch rf' r1, regFetch rf' r2), (regFetch rf' r3, regFetch rf' r4))
 
 gpr :: HiddenClockResetEnable dom
     => Signal dom ((FifoT.FifoItem, FifoT.FifoItem), WritePort, WritePort)

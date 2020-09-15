@@ -3,6 +3,7 @@ module Orange.IP.StaticDM where
 import Clash.Prelude
 
 import Orange.Types.DCache
+import qualified Debug.Trace
 import qualified Orange.Types.Gpr as GprT
 import qualified Orange.Types.Issue as IssueT
 import qualified Orange.Types.Fetch as FetchT
@@ -30,9 +31,9 @@ instance DCacheImpl StaticDM where
             delayedPC = register 0 (fmap transformPC req)
             delayedRd = register 0 (fmap transformRd req)
             delayedReadPort = register 0 readPort
-            forwardedReadResult = writeForward delayedReadPort rawReadResult writePortFinal 
+            forwardedReadResult = writeForward delayedReadPort rawReadResult writePortFinal
             readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
-            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult)
+            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1)
             writePortD1 = register Nothing writePort
             
             -- stage 3
@@ -73,9 +74,10 @@ instance DCacheImpl StaticDM where
                         SelHalf0 -> ext16 (ram1 ++# ram0)
                         SelHalf1 -> ext16 (ram3 ++# ram2)
                         SelWord -> ram3 ++# ram2 ++# ram1 ++# ram0
-            transformCommitPort (pc, rd, readRes) = case readRes of
-                Just x -> PipeT.Ok (pc, Just (PipeT.GPR rd x))
-                Nothing -> PipeT.Bubble
+            transformCommitPort (pc, rd, readRes, writePort) = case (readRes, writePort) of
+                (Just x, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x))
+                (_, Just _) -> PipeT.Ok (pc, Nothing)
+                _ -> PipeT.Bubble
             transformWriteCommit (writePort, weCommit) = case weCommit of
                 CanWrite -> writePort
                 NoWrite -> Nothing
@@ -119,7 +121,7 @@ mkByteRam getRange getWe readPort writePort = readResult
     where
         rawAddr = fmap ramIndex readPort
         rawWrite = fmap extractWrite writePort
-        readResult = blockRamPow2 (repeat 0) rawAddr rawWrite
+        readResult = readNew (blockRamPow2 (repeat 0)) rawAddr rawWrite
         extractWrite x = case x of
             Just (addr, v, mask) -> if getWe mask then Just (ramIndex addr, getRange v) else Nothing
             _ -> Nothing
