@@ -11,6 +11,6 @@ data ArchRegister = GPR GprT.RegIndex GprT.RegValue
 
 data Commit = Ok (FetchT.PC, Maybe ArchRegister) | Exc (FetchT.PC, Exception) | Bubble
     deriving (Generic, NFDataX)
-data Recovery = IsRecovery | NotRecovery deriving (Generic, NFDataX)
+data Recovery = IsRecovery | NotRecovery deriving (Generic, NFDataX, Show)
 
 type PipeSize = 3 :: Nat

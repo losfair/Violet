@@ -11,6 +11,8 @@ import qualified Orange.Types.Branch as BranchT
 import qualified Orange.Types.DecodeDep as DepT
 import qualified Orange.Types.Gpr as GprT
 import qualified Orange.Types.Ctrl as CtrlT
+import qualified Debug.Trace
+import qualified Prelude
 
 data IssueState = IssueState {
     loadActivated :: BitVector 2,
@@ -18,34 +20,42 @@ data IssueState = IssueState {
 } deriving (Generic, NFDataX)
 
 type IssueInput = (FifoT.FifoItem, FifoT.FifoItem)
-type IssueOutput = (((IssuePort, IssuePort), ActivationMask), PipeT.Recovery, FifoT.FifoPopReq)
+type IssueOutput = (((IssuePort, IssuePort), ActivationMask), PipeT.Recovery, PipeT.Recovery, FifoT.FifoPopReq)
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
        -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
 issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
-    ((state', port1', port2', am', (recovery', popReq')), (((port1, port2), am), recovery, popReq))
+    ((state', port1', port2', am', (recovery', popReq')), (((port1, port2), am), recovery, recovery', popReq))
     where
+        -- item1 = Debug.Trace.trace ("Item1: " Prelude.++ show item1_) item1_
+        -- item2 = Debug.Trace.trace ("Item2: " Prelude.++ show item2_) item2_
         wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
-        isExceptionResolved = itemWantsExceptionResolution item1
+        exceptionResolvedAt1 = itemWantsExceptionResolution item1
+        exceptionResolvedAt2 = itemWantsExceptionResolution item2
+        isExceptionResolved = exceptionResolvedAt1 || exceptionResolvedAt2
+
+        -- Port 1 should be disabled if exception is resolved at port 2
+        disableFirstPort = exceptionResolvedAt2
 
         loadActivated_ = loadActivated state /= 0
-        loadActivated' = slice d0 d0 (loadActivated state) ++# if wantsLoadAccess then 0b1 else 0b0
-
         ctrlActivated_ = ctrlActivated state /= 0
-        ctrlActivated' = slice d0 d0 (ctrlActivated state) ++# if wantsCtrlAccess then 0b1 else 0b0
 
         pipelineBlocked = loadActivated_ || ctrlActivated_
 
+        -- Don't re-activate if we didn't issue
+        loadActivated' = slice d0 d0 (loadActivated state) ++# if wantsLoadAccess && not pipelineBlocked then 0b1 else 0b0
+        ctrlActivated' = slice d0 d0 (ctrlActivated state) ++# if wantsCtrlAccess && not pipelineBlocked then 0b1 else 0b0
+
         amNormal = ActivationMask {
-            amInt1 = lookActivation item1 DepT.actInt,
+            amInt1 = lookActivation item1 DepT.actInt && not disableFirstPort,
             amInt2 = lookActivation item2 DepT.actInt && canConcurrentIssue item2,
-            amBranch = lookActivation item1 DepT.actBranch,
-            amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x),
+            amBranch = lookActivation item1 DepT.actBranch && not disableFirstPort,
+            amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x) && not disableFirstPort,
             amCtrl =
-                if lookActivation item1 DepT.actException then Just CtrlDecodeException
-                else if lookActivation item1 DepT.actCtrl then Just CtrlNormal
+                if lookActivation item1 DepT.actException && not disableFirstPort then Just CtrlDecodeException
+                else if lookActivation item1 DepT.actCtrl && not disableFirstPort then Just CtrlNormal
                 else Nothing
         }
         am' = if pipelineBlocked then emptyActivationMask else amNormal

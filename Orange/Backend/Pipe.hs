@@ -3,20 +3,26 @@ module Orange.Backend.Pipe where
 import Clash.Prelude
 import Orange.Types.Pipe
 
-genPipe :: HiddenClockResetEnable dom
-     => KnownNat n
-     => NFDataX a
-     => a
-     -> Vec n (Signal dom a)
-     -> Vec n (Signal dom a)
-genPipe initial = map (register initial)
+recoverableRegister :: HiddenClockResetEnable dom
+                    => NFDataX a
+                    => a
+                    -> Signal dom Recovery
+                    -> Signal dom a
+                    -> Signal dom a
+recoverableRegister initial recovery next = r
+     where
+          r = register initial (fmap nextS $ bundle (recovery, next))
+          nextS (recovery, next) = case recovery of
+               IsRecovery -> initial
+               NotRecovery -> next
 
 completionPipe :: HiddenClockResetEnable dom
-               => Vec PipeSize (Signal dom Commit)
+               => Signal dom Recovery
                -> Vec PipeSize (Signal dom Commit)
-completionPipe = genPipe Bubble
+               -> Vec PipeSize (Signal dom Commit)
+completionPipe recovery = map (recoverableRegister Bubble recovery)
 
 recoveryPipe :: HiddenClockResetEnable dom
              => Vec PipeSize (Signal dom Recovery)
              -> Vec PipeSize (Signal dom Recovery)
-recoveryPipe = genPipe NotRecovery
+recoveryPipe = map (register NotRecovery)

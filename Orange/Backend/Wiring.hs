@@ -33,11 +33,11 @@ wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
     where
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Orange.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
-        (bypassInput, recovery, fifoPopReq) = unbundle $ Orange.Backend.Issue.issue $ bundle (issueInput1, issueInput2)
+        (bypassInput, recovery, immRecovery, fifoPopReq) = unbundle $ Orange.Backend.Issue.issue $ bundle (issueInput1, issueInput2)
         gprFetch = Orange.Backend.Gpr.gpr $ bundle (bundle (issueInput1, issueInput2), gprWritePort1, gprWritePort2)
         (fuActivation, gprPort1, gprPort2) = Orange.Backend.Bypass.bypass bypassInput gprFetch commitPipe1 commitPipe2
-        commitPipe1 = Orange.Backend.Pipe.completionPipe commitStagesIn1
-        commitPipe2 = Orange.Backend.Pipe.completionPipe commitStagesIn2
+        commitPipe1 = Orange.Backend.Pipe.completionPipe immRecovery commitStagesIn1
+        commitPipe2 = Orange.Backend.Pipe.completionPipe immRecovery commitStagesIn2
         recoveryPipe = Orange.Backend.Pipe.recoveryPipe recoveryStagesIn
         intAlu1 = Orange.Backend.IntAlu.intAlu (fmap IssueT.fuInt1 fuActivation) gprPort1
         intAlu2 = Orange.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
