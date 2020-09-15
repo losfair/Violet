@@ -34,4 +34,4 @@ decodeAccessResult (Just rawRes, (pc, fetchMeta)) = ((pc1, inst1, md1), (pc2, in
             False -> (pc, slice d31 d0 rawRes, fetchMeta)
         (pc2, inst2, md2) = case hasOffset of
             True -> (0, FetchT.nopInst, FetchT.emptyMetadata)
-            False -> (setBit pc 2, slice d63 d32 rawRes, FetchT.validMetadata)
+            False -> (setBit pc 2, slice d63 d32 rawRes, if FetchT.isValidInst fetchMeta then FetchT.validMetadata else FetchT.emptyMetadata)

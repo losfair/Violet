@@ -2,9 +2,11 @@ module Orange.Backend.Bypass where
 
 import Clash.Prelude
 import Orange.Types.Issue
+import qualified Prelude
 import qualified Orange.Types.Pipe as PipeT
 import qualified Orange.Types.Issue as IssueT
 import qualified Orange.Types.Gpr as GprT
+import qualified Debug.Trace
 
 bypassOne' :: (
                 Vec PipeT.PipeSize PipeT.Commit,
@@ -12,11 +14,17 @@ bypassOne' :: (
                 (GprT.RegValue, GprT.RegValue),
                 IssueT.IssuePort)
            -> (GprT.RegValue, GprT.RegValue)
-bypassOne' (cp1, cp2, (rs1Fetched, rs2Fetched), (_, inst, _)) = (overrideRegfetch rs1Fetched rs1Bypassed, overrideRegfetch rs2Fetched rs2Bypassed)
+bypassOne' (cp1, cp2, (rs1Fetched, rs2Fetched), (_, inst, _)) =
+    -- (Debug.Trace.trace ("RS1-val: <" Prelude.++ show rs1Val Prelude.++ ">") rs1Val, Debug.Trace.trace ("RS2-val: <" Prelude.++ show rs2Val Prelude.++ ">") rs2Val)
+    (rs1Val, rs2Val)
     where
         (rs1, rs2) = GprT.decodeRs inst
         rs1Bypassed = foldCommitPipes rs1 cp1 cp2
         rs2Bypassed = foldCommitPipes rs2 cp1 cp2
+        -- rs1Bypassed = Debug.Trace.trace ("RS1-bypass: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs1Bypassed_ Prelude.++ ">") rs1Bypassed_
+        -- rs2Bypassed = Debug.Trace.trace ("RS2-bypass: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs2Bypassed_ Prelude.++ ">") rs2Bypassed_
+        rs1Val = overrideRegfetch rs1Fetched rs1Bypassed
+        rs2Val = overrideRegfetch rs2Fetched rs2Bypassed
 
 bypass :: HiddenClockResetEnable dom
        => Signal dom ((IssuePort, IssuePort), ActivationMask)
@@ -39,6 +47,7 @@ foldCommitPipes :: GprT.RegIndex
                 -> Vec PipeT.PipeSize PipeT.Commit
                 -> Vec PipeT.PipeSize PipeT.Commit
                 -> Maybe GprT.RegValue
+foldCommitPipes 0 _ _ = Nothing
 foldCommitPipes i cp1 cp2 = fold folder mappedCp
     where
         combinedCp = merge cp1 cp2
