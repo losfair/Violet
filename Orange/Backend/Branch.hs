@@ -15,7 +15,7 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
         mode = slice d3 d2 inst
         rd = GprT.decodeRd inst
         condSatisfied_ = case slice d14 d13 inst of
-            0b00 -> rs1V /= rs2V
+            0b00 -> rs1V == rs2V
             0b10 -> signedLt rs1V rs2V
             _ -> unsignedLt rs1V rs2V -- 0b11
         condSatisfied = case slice d12 d12 inst of
