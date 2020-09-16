@@ -64,7 +64,7 @@ transformCommit (PipeT.Ok (pc, Just (PipeT.GPR i v))) = (Just pc, Just (i, v), F
 transformCommit (PipeT.Ok (pc, Nothing)) = (Just pc, Nothing, FetchT.NoCmd)
 transformCommit PipeT.Bubble = (Nothing, Nothing, FetchT.NoCmd)
 transformCommit (PipeT.Exc (pc, e)) = case e of
-    PipeT.BranchLink nextPC idx -> (Just pc, Just (idx, pc + 4), FetchT.ApplyBranch (nextPC, (pc, FetchT.Unconditional)))
-    PipeT.BranchFalsePos -> (Just pc, Nothing, FetchT.ApplyBranch (pc + 4, (pc, FetchT.NotTaken)))
+    PipeT.BranchLink nextPC idx linkPC -> (Just pc, Just (idx, linkPC), FetchT.ApplyBranch (nextPC, (pc, FetchT.Unconditional)))
+    PipeT.BranchFalsePos nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken)))
     PipeT.BranchFalseNeg nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken)))
     _ -> (Just pc, Nothing, FetchT.NoCmd) -- TODO: Implement exceptions

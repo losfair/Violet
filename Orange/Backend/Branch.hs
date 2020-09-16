@@ -23,14 +23,24 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
             0b1 -> not condSatisfied_
         commit = case mode of
             0b11 -> -- jal: should be handled by frontend but not yet
-                PipeT.Exc (pc, PipeT.BranchLink (pc + FetchT.decodeJalOffset inst) rd)
+                if FetchT.branchPredicted meta == Just (pc + FetchT.decodeJalOffset inst) then
+                    PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
+                else
+                    PipeT.Exc (pc, PipeT.BranchLink (pc + FetchT.decodeJalOffset inst) rd (pc + 4))
             0b01 -> -- jalr: link
-                PipeT.Exc (pc, PipeT.BranchLink rs1V rd)
+                if FetchT.branchPredicted meta == Just rs1V then
+                    PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
+                else
+                    PipeT.Exc (pc, PipeT.BranchLink rs1V rd (pc + 4))
             _ -> -- 0b00: bcond
-                if condSatisfied == FetchT.branchPredicted meta then
+                if not condSatisfied && FetchT.branchPredicted meta == Nothing then
                     PipeT.Ok (pc, Nothing)
-                else if condSatisfied then PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst))
-                else PipeT.Exc (pc, PipeT.BranchFalsePos)
+                else if condSatisfied && FetchT.branchPredicted meta == Just (pc + FetchT.decodeRelBrOffset inst) then
+                    PipeT.Ok (pc, Nothing)
+                else if not condSatisfied then
+                    PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4))
+                else -- condSatisfied
+                    PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst))
 
 branch :: HiddenClockResetEnable dom
        => Signal dom (Maybe IssueT.IssuePort)

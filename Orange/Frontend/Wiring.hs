@@ -4,6 +4,7 @@ import Clash.Prelude
 import qualified Orange.Frontend.ICache
 import qualified Orange.Frontend.DecodeDep
 import qualified Orange.Frontend.PC
+import qualified Orange.Frontend.BTB
 
 import qualified Orange.Types.ICache as ICacheT
 import qualified Orange.Types.Fetch as FetchT
@@ -17,6 +18,7 @@ wiring :: HiddenClockResetEnable dom
        -> Signal dom (FifoT.FifoItem, FifoT.FifoItem)
 wiring icacheImpl beCmd pushCap = decodeOut
     where
-        pcOut = Orange.Frontend.PC.pc beCmd pushCap
-        (decodePort1, decodePort2) = unbundle $ Orange.Frontend.ICache.icache icacheImpl pcOut pushCap
+        pcOut = Orange.Frontend.PC.pc beCmd (bundle (pdCmd, pdAck)) pushCap
+        (pdCmd, pdAck, decodePorts) = unbundle $ Orange.Frontend.ICache.icache icacheImpl pcOut pushCap
+        (decodePort1, decodePort2) = unbundle decodePorts
         decodeOut = Orange.Frontend.DecodeDep.decodeDep $ bundle (decodePort1, decodePort2, pushCap)
