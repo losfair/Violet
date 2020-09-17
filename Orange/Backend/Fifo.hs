@@ -2,6 +2,8 @@ module Orange.Backend.Fifo where
 
 import Clash.Prelude
 import Orange.Types.Fifo
+import qualified Debug.Trace
+import qualified Prelude
 
 fifo' :: (Vec (2^FifoBits) FifoItem, Unsigned FifoBits, Unsigned FifoBits, FifoPushCap)
       -> (FifoItem, FifoItem, FifoPopReq)
@@ -18,7 +20,7 @@ fifo' (store, rptr, wptr, pushCap) (witem1, witem2, popReq) = ((store', rptr', w
                     PopTwo -> rptr + 2
         ritem1 = if rptr' == wptr then Bubble else store !! rptr'
         ritem2 = if rptr' == wptr || rptr' + 1 == wptr then Bubble else store !! (rptr' + 1)
-        willFull = wptr' + 1 == rptr' || wptr' + 2 == rptr' || wptr' + 3 == rptr'
+        willFull = wptr' + 1 == rptr' || wptr' + 2 == rptr' || wptr' + 3 == rptr' || wptr' + 4 == rptr'
         pushCap' = if willFull then WillFull else CanPush
         store' = case witem1 of
             Bubble -> store
