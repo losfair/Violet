@@ -4,7 +4,7 @@ import Clash.Prelude
 import qualified Orange.Types.Fetch as FetchT
 import qualified Orange.Types.DecodeDep as DecodeDep
 
-type FifoBits = 3 :: Nat
+type FifoBits = 4 :: Nat
 data FifoPushCap = CanPush | WillFull
     deriving (Generic, NFDataX, Eq, Show)
 data FifoPopReq = PopNothing | PopOne | PopTwo
