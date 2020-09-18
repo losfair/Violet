@@ -13,7 +13,7 @@ instance ICacheImpl StaticIM where
         where
             enable = (hideEnable genEnable) pushCap
             readAddr = fmap (unpack . slice d15 d3) pc
-            readPort = (exposeEnable (blockRamFilePow2 "im.bin" readAddr (pure Nothing))) enable
+            readPort = (exposeEnable (blockRamFilePow2 "im.txt" readAddr (pure Nothing))) enable
             genEnable :: HiddenClockResetEnable dom => Enable dom -> Signal dom FifoT.FifoPushCap -> Enable dom
             genEnable base x = toEnable (fmap (\(x, y) -> x && y) $ bundle (rawBase, canPush))
                 where

@@ -106,22 +106,23 @@ mkRam :: HiddenClockResetEnable dom
       -> Signal dom (BitVector 8, BitVector 8, BitVector 8, BitVector 8)
 mkRam readPort writePort = bundle (ram3, ram2, ram1, ram0)
     where
-        ram0 = mkByteRam (slice d7 d0) (\x -> testBit x 0) readPort writePort
-        ram1 = mkByteRam (slice d15 d8) (\x -> testBit x 1) readPort writePort
-        ram2 = mkByteRam (slice d23 d16) (\x -> testBit x 2) readPort writePort
-        ram3 = mkByteRam (slice d31 d24) (\x -> testBit x 3) readPort writePort
+        ram0 = mkByteRam (slice d7 d0) (\x -> testBit x 0) "dm.0.txt" readPort writePort
+        ram1 = mkByteRam (slice d15 d8) (\x -> testBit x 1) "dm.1.txt" readPort writePort
+        ram2 = mkByteRam (slice d23 d16) (\x -> testBit x 2) "dm.2.txt" readPort writePort
+        ram3 = mkByteRam (slice d31 d24) (\x -> testBit x 3) "dm.3.txt" readPort writePort
 
 mkByteRam :: HiddenClockResetEnable dom
           => (BitVector 32 -> BitVector 8)
           -> (WriteMask -> Bool)
+          -> String
           -> Signal dom MemAddr
           -> Signal dom (Maybe (MemAddr, MemData, WriteMask))
           -> Signal dom (BitVector 8)
-mkByteRam getRange getWe readPort writePort = readResult
+mkByteRam getRange getWe fileName readPort writePort = readResult
     where
         rawAddr = fmap ramIndex readPort
         rawWrite = fmap extractWrite writePort
-        readResult = readNew (blockRamPow2 (repeat 0)) rawAddr rawWrite
+        readResult = readNew (blockRamFilePow2 fileName) rawAddr rawWrite
         extractWrite x = case x of
             Just (addr, v, mask) -> if getWe mask then Just (ramIndex addr, getRange v) else Nothing
             _ -> Nothing
