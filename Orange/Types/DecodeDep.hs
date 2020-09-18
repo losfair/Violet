@@ -15,8 +15,17 @@ data Activation = Activation {
 data Concurrency = CanConcurrentIssue | NoConcurrentIssue
     deriving (Generic, NFDataX, Eq, Show)
 
-data RegLayout = Rd | RdRs1 | RdRs1Rs2 | Rs1Rs2 | NoReg
-    deriving (Generic, NFDataX, Eq, Show)
+data RegLayout = RegLayout {
+    hasRd :: Bool,
+    hasRs1 :: Bool,
+    hasRs2 :: Bool
+} deriving (Generic, NFDataX, Eq, Show)
+
+layoutRd = RegLayout { hasRd = True, hasRs1 = False, hasRs2 = False }
+layoutRdRs1 = RegLayout { hasRd = True, hasRs1 = True, hasRs2 = False }
+layoutRdRs1Rs2 = RegLayout { hasRd = True, hasRs1 = True, hasRs2 = True }
+layoutRs1Rs2 = RegLayout { hasRd = False, hasRs1 = True, hasRs2 = True }
+layoutNoReg = RegLayout { hasRd = False, hasRs1 = False, hasRs2 = False }
 
 data Stall = StallNone | StallMemory | StallControl
     deriving (Generic, NFDataX, Eq, Show)

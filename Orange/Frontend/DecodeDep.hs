@@ -7,22 +7,22 @@ import qualified Orange.Types.Fifo as FifoT
 
 decode :: FetchT.Inst -> (Activation, RegLayout, Stall)
 decode inst = case slice d6 d0 inst of
-    0b0110111 -> (intActivation, Rd, StallNone) -- lui
-    0b0010111 -> (intActivation, Rd, StallNone) -- auipc
-    0b1101111 -> (jalActivation, Rd, StallNone) -- jal
-    0b1100111 -> (jalActivation, RdRs1, StallNone) -- jalr
-    0b1100011 -> (jActivation, Rs1Rs2, StallNone) -- beq/bne/blt/bge/bltu/bgeu
-    0b0000011 -> (loadActivation, RdRs1, StallMemory) -- load
-    0b0100011 -> (storeActivation, Rs1Rs2, StallNone) -- store
-    0b0010011 -> (intActivation, RdRs1, StallNone) -- ALU with imm
+    0b0110111 -> (intActivation, layoutRd, StallNone) -- lui
+    0b0010111 -> (intActivation, layoutRd, StallNone) -- auipc
+    0b1101111 -> (jalActivation, layoutRd, StallNone) -- jal
+    0b1100111 -> (jalActivation, layoutRdRs1, StallNone) -- jalr
+    0b1100011 -> (jActivation, layoutRs1Rs2, StallNone) -- beq/bne/blt/bge/bltu/bgeu
+    0b0000011 -> (loadActivation, layoutRdRs1, StallMemory) -- load
+    0b0100011 -> (storeActivation, layoutRs1Rs2, StallNone) -- store
+    0b0010011 -> (intActivation, layoutRdRs1, StallNone) -- ALU with imm
     0b0110011 -> case slice d31 d25 inst of
         0b0000001 -> case slice d14 d14 inst of
-            0b0 -> (intActivation, RdRs1Rs2, StallNone) -- mul
-            0b1 -> (ctrlActivation, RdRs1Rs2, StallControl) -- div
-        _ -> (intActivation, RdRs1Rs2, StallNone)
-    0b0001111 -> (ctrlActivation, RdRs1, StallControl) -- fence
-    0b1110011 -> (ctrlActivation, NoReg, StallControl) -- ecall/ebreak
-    _ -> (excActivation, NoReg, StallNone)
+            0b0 -> (intActivation, layoutRdRs1Rs2, StallNone) -- mul
+            0b1 -> (ctrlActivation, layoutRdRs1Rs2, StallControl) -- div
+        _ -> (intActivation, layoutRdRs1Rs2, StallNone)
+    0b0001111 -> (ctrlActivation, layoutRdRs1, StallControl) -- fence
+    0b1110011 -> (ctrlActivation, layoutNoReg, StallControl) -- ecall/ebreak
+    _ -> (excActivation, layoutNoReg, StallNone)
 
 dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
 dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
@@ -41,9 +41,9 @@ dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurre
         inst2Rs2 = slice d24 d20 inst2
         inst2Rd = slice d11 d7 inst2
 
-        inst1WritesRd = layout1 == Rd || layout1 == RdRs1 || layout1 == RdRs1Rs2
-        inst2ReadsRs1 = layout2 == RdRs1 || layout2 == RdRs1Rs2 || layout2 == Rs1Rs2
-        inst2ReadsRs2 = layout2 == RdRs1Rs2 || layout2 == Rs1Rs2
+        inst1WritesRd = hasRd layout1
+        inst2ReadsRs1 = hasRs1 layout2
+        inst2ReadsRs2 = hasRs2 layout2
         regConflictCase1 = inst1WritesRd && inst2ReadsRs1 && inst1Rd == inst2Rs1 && inst1Rd /= 0
         regConflictCase2 = inst1WritesRd && inst2ReadsRs2 && inst1Rd == inst2Rs2 && inst1Rd /= 0
         regHazard = regConflictCase1 || regConflictCase2
@@ -65,7 +65,7 @@ decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2)
 decodeDep :: HiddenClockResetEnable dom
           => Signal dom ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata), FifoT.FifoPushCap)
           -> Signal dom (FifoT.FifoItem, FifoT.FifoItem)
-decodeDep = mealy decodeDep' (FifoT.Bubble, FifoT.Bubble, (FetchT.nopInst, emptyActivation, NoReg))
+decodeDep = mealy decodeDep' (FifoT.Bubble, FifoT.Bubble, (FetchT.nopInst, emptyActivation, layoutNoReg))
 
 emptyActivation :: Activation
 emptyActivation = Activation {

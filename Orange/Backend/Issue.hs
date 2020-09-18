@@ -15,7 +15,7 @@ import qualified Debug.Trace
 import qualified Prelude
 
 data IssueState = IssueState {
-    loadActivated :: BitVector 2,
+    loadActivated :: Vec 2 (Maybe GprT.RegIndex),
     ctrlActivated :: BitVector 2
 } deriving (Generic, NFDataX)
 
@@ -30,7 +30,6 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
     where
         -- item1 = Debug.Trace.trace ("Item1: " Prelude.++ show item1_) item1_
         -- item2 = Debug.Trace.trace ("Item2: " Prelude.++ show item2_) item2_
-        wantsLoadAccess = itemWantsLoadAccess item1
         wantsCtrlAccess = itemWantsCtrlAccess item1
         exceptionResolvedAt1 = itemWantsExceptionResolution item1
         exceptionResolvedAt2 = itemWantsExceptionResolution item2
@@ -38,19 +37,21 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
 
         -- Port 1 should be disabled if exception is resolved at port 2
         disableFirstPort = exceptionResolvedAt2
+        enableSecondPort = canConcurrentIssue item2
 
-        loadActivated_ = loadActivated state /= 0
-        ctrlActivated_ = ctrlActivated state /= 0
+        loadBlocked = (not disableFirstPort && hasLoadUse state item1) || (enableSecondPort && hasLoadUse state item2)
+        ctrlBlocked = ctrlActivated state /= 0
 
-        pipelineBlocked = loadActivated_ || ctrlActivated_
+        pipelineBlocked = loadBlocked || ctrlBlocked
 
         -- Don't re-activate if we didn't issue
-        loadActivated' = slice d0 d0 (loadActivated state) ++# if wantsLoadAccess && not pipelineBlocked then 0b1 else 0b0
+        loadDst = if not pipelineBlocked then itemLoadDstReg item1 else Nothing
+        loadActivated' = fst $ shiftInAtN (loadActivated state) (loadDst :> Nil)
         ctrlActivated' = slice d0 d0 (ctrlActivated state) ++# if wantsCtrlAccess && not pipelineBlocked then 0b1 else 0b0
 
         amNormal = ActivationMask {
             amInt1 = lookActivation item1 DepT.actInt && not disableFirstPort,
-            amInt2 = lookActivation item2 DepT.actInt && canConcurrentIssue item2,
+            amInt2 = lookActivation item2 DepT.actInt && enableSecondPort,
             amBranch = lookActivation item1 DepT.actBranch && not disableFirstPort,
             amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x) && not disableFirstPort,
             amCtrl =
@@ -60,7 +61,7 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
         }
         am' = if pipelineBlocked then emptyActivationMask else amNormal
         popReq' = if pipelineBlocked || FifoT.isBubble item1 then FifoT.PopNothing
-                    else if not (canConcurrentIssue item2) || FifoT.isBubble item2 then FifoT.PopOne
+                    else if not enableSecondPort || FifoT.isBubble item2 then FifoT.PopOne
                     else FifoT.PopTwo
         recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         port1' = genIssuePort item1
@@ -70,12 +71,28 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated = 0, ctrlActivated = 0 }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated = repeat Nothing, ctrlActivated = 0 }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
-itemWantsLoadAccess :: FifoT.FifoItem -> Bool
-itemWantsLoadAccess item = case item of
-    FifoT.Item (_, _, _, act, _, _, _) -> DepT.actLoad act
+hasLoadUse :: IssueState -> FifoT.FifoItem -> Bool
+hasLoadUse state item = case item of
+    FifoT.Item (_, i, _, _, layout, _, _) ->
+        let
+            (rs1, rs2) = GprT.decodeRs i
+            in
+                case findIndex (\x -> (DepT.hasRs1 layout && x == Just rs1) || (DepT.hasRs2 layout && x == Just rs2)) (loadActivated state) of
+                    Just _ -> True
+                    Nothing -> False
     _ -> False
+
+itemLoadDstReg :: FifoT.FifoItem -> Maybe GprT.RegIndex
+itemLoadDstReg item = case item of
+    FifoT.Item (_, i, _, act, _, _, _) ->
+        if DepT.actLoad act then
+            case GprT.decodeRd i of
+                0 -> Nothing
+                x -> Just x
+        else Nothing
+    _ -> Nothing
 
 itemWantsCtrlAccess :: FifoT.FifoItem -> Bool
 itemWantsCtrlAccess item = case item of
