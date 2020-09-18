@@ -16,21 +16,20 @@ import qualified Prelude
 
 data IssueState = IssueState {
     loadActivated :: Vec 2 (Maybe GprT.RegIndex),
-    ctrlActivated :: BitVector 2
+    ctrlFirstCycle :: Bool
 } deriving (Generic, NFDataX)
 
-type IssueInput = (FifoT.FifoItem, FifoT.FifoItem)
+type IssueInput = (FifoT.FifoItem, FifoT.FifoItem, CtrlT.CtrlBusy)
 type IssueOutput = (((IssuePort, IssuePort), ActivationMask), PipeT.Recovery, PipeT.Recovery, FifoT.FifoPopReq)
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
        -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
-issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
+issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
     ((state', port1', port2', am', (recovery', popReq')), (((port1, port2), am), recovery, recovery', popReq))
     where
         -- item1 = Debug.Trace.trace ("Item1: " Prelude.++ show item1_) item1_
         -- item2 = Debug.Trace.trace ("Item2: " Prelude.++ show item2_) item2_
-        wantsCtrlAccess = itemWantsCtrlAccess item1
         exceptionResolvedAt1 = itemWantsExceptionResolution item1
         exceptionResolvedAt2 = itemWantsExceptionResolution item2
         isExceptionResolved = exceptionResolvedAt1 || exceptionResolvedAt2
@@ -40,14 +39,14 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
         enableSecondPort = canConcurrentIssue item2
 
         loadBlocked = (not disableFirstPort && hasLoadUse state item1) || (enableSecondPort && hasLoadUse state item2)
-        ctrlBlocked = ctrlActivated state /= 0
+        ctrlBlocked = ctrlFirstCycle state || ctrlBusy == CtrlT.Busy
 
         pipelineBlocked = loadBlocked || ctrlBlocked
 
         -- Don't re-activate if we didn't issue
         loadDst = if not pipelineBlocked then itemLoadDstReg item1 else Nothing
         loadActivated' = fst $ shiftInAtN (loadActivated state) (loadDst :> Nil)
-        ctrlActivated' = slice d0 d0 (ctrlActivated state) ++# if wantsCtrlAccess && not pipelineBlocked then 0b1 else 0b0
+        ctrlFirstCycle' = itemWantsCtrlAccess item1 && not pipelineBlocked
 
         amNormal = ActivationMask {
             amInt1 = lookActivation item1 DepT.actInt && not disableFirstPort,
@@ -66,12 +65,12 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2) =
         recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         port1' = genIssuePort item1
         port2' = genIssuePort item2
-        state' = IssueState { loadActivated = loadActivated', ctrlActivated = ctrlActivated' }
+        state' = IssueState { loadActivated = loadActivated', ctrlFirstCycle = ctrlFirstCycle' }
 
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated = repeat Nothing, ctrlActivated = 0 }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated = repeat Nothing, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
 hasLoadUse :: IssueState -> FifoT.FifoItem -> Bool
 hasLoadUse state item = case item of

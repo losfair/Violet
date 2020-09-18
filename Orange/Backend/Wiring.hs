@@ -11,6 +11,7 @@ import qualified Orange.Backend.IntAlu
 import qualified Orange.Backend.Issue
 import qualified Orange.Backend.Pipe
 import qualified Orange.Backend.Fifo
+import qualified Orange.Backend.Ctrl
 
 import qualified Orange.Types.Fifo as FifoT
 import qualified Orange.Types.Fetch as FetchT
@@ -33,7 +34,7 @@ wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
     where
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Orange.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
-        (bypassInput, recovery, immRecovery, fifoPopReq) = unbundle $ Orange.Backend.Issue.issue $ bundle (issueInput1, issueInput2)
+        (bypassInput, recovery, immRecovery, fifoPopReq) = unbundle $ Orange.Backend.Issue.issue $ bundle (issueInput1, issueInput2, ctrlBusy)
         gprFetch = Orange.Backend.Gpr.gpr $ bundle (bundle (issueInput1, issueInput2), gprWritePort1, gprWritePort2)
         (fuActivation, gprPort1, gprPort2) = Orange.Backend.Bypass.bypass bypassInput gprFetch commitPipe1 commitPipe2
         commitPipe1 = Orange.Backend.Pipe.completionPipe immRecovery commitStagesIn1
@@ -43,9 +44,11 @@ wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
         intAlu2 = Orange.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
         branchUnit = Orange.Backend.Branch.branch (fmap IssueT.fuBranch fuActivation) gprPort1
         (dcacheUnit, dcWeReq) = Orange.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
+        (ctrlUnit, ctrlBusy) = unbundle $ Orange.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1
+
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog) = unbundle $ Orange.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
         commitStagesIn1 =
-            selectCommit intAlu1 branchUnit
+            selectCommit (selectCommit intAlu1 branchUnit) ctrlUnit
             :> commitPipe1 !! 0
             :> selectCommit (commitPipe1 !! 1) dcacheUnit
             :> Nil

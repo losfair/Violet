@@ -17,7 +17,7 @@ decode inst = case slice d6 d0 inst of
     0b0010011 -> (intActivation, layoutRdRs1, StallNone) -- ALU with imm
     0b0110011 -> case slice d31 d25 inst of
         0b0000001 -> case slice d14 d14 inst of
-            0b0 -> (intActivation, layoutRdRs1Rs2, StallNone) -- mul
+            0b0 -> (ctrlActivation, layoutRdRs1Rs2, StallNone) -- mul
             0b1 -> (ctrlActivation, layoutRdRs1Rs2, StallControl) -- div
         _ -> (intActivation, layoutRdRs1Rs2, StallNone)
     0b0001111 -> (ctrlActivation, layoutRdRs1, StallControl) -- fence
