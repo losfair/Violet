@@ -12,9 +12,10 @@ icache :: HiddenClockResetEnable dom
        => ICacheImpl a
        => a
        -> Signal dom (FetchT.PC, FetchT.Metadata)
+       -> Signal dom FetchT.PC
        -> Signal dom FifoT.FifoPushCap
        -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-icache impl fetchReq pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
+icache impl fetchReq btbPrediction pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -22,7 +23,7 @@ icache impl fetchReq pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
         (_, delayedFetchMd) = unbundle delayedFetchReq
         rawAccessRes = issueAccess impl alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
-        rawPredicted = fmap staticPredictNext accessRes
+        rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, accessRes)
         (pdCmd, pdAck, afterPrediction) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
             where
                 f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
@@ -52,21 +53,29 @@ decodeAccessResult (Just rawRes, (pc, fetchMeta)) = ((pc1, inst1, md1), (pc2, in
             True -> (0, FetchT.nopInst, FetchT.emptyMetadata)
             False -> (setBit pc 2, slice d63 d32 rawRes, if FetchT.isValidInst fetchMeta then FetchT.validMetadata else FetchT.emptyMetadata)
 
-staticPredictNext :: ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
+staticPredictNext :: (
+                        FetchT.PC,
+                        ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
+                     )
                   -> (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-staticPredictNext ((pc1, inst1, md1), (pc2, inst2, md2)) = (cmd, ack, (out1, out2))
+staticPredictNext (btbPrediction, ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd, ack, (out1, out2))
     where
         pred1 = predictBr pc1 inst1 md1
         pred2 = predictBr pc2 inst2 md2
-        (cmd, out1, out2) = case (pred1, pred2) of
-            (Just dst, _) -> (FetchT.EarlyRectifyBranch (Just dst, pc1), (pc1, inst1, markBranchPredicted md1 dst), (0, FetchT.nopInst, FetchT.emptyMetadata))
-            (_, Just dst) -> (FetchT.EarlyRectifyBranch (Just dst, pc2), (pc1, inst1, md1), (pc2, inst2, markBranchPredicted md2 dst))
+        jalr1 = isValidJalr inst1 md1
+        jalr2 = isValidJalr inst2 md2
+        (cmd, out1, out2) = case (pred1, pred2, jalr1, jalr2) of
+            (Just dst, _, _, _) -> (FetchT.EarlyRectifyBranch dst, (pc1, inst1, markBranchPredicted md1 dst), (0, FetchT.nopInst, FetchT.emptyMetadata))
+            (_, Just dst, _, _) -> (FetchT.EarlyRectifyBranch dst, (pc1, inst1, md1), (pc2, inst2, markBranchPredicted md2 dst))
+            (_, _, True, _) -> (FetchT.EarlyRectifyBranch btbPrediction, (pc1, inst1, markBranchPredicted md1 btbPrediction), (0, FetchT.nopInst, FetchT.emptyMetadata))
+            (_, _, _, True) -> (FetchT.EarlyRectifyBranch btbPrediction, (pc1, inst1, md1), (pc2, inst2, markBranchPredicted md2 btbPrediction))
             _ -> (FetchT.NoPreDecCmd, (pc1, inst1, md1), (pc2, inst2, md2))
         ack = if FetchT.exceptionResolved md1 then FetchT.AckExceptionResolved else FetchT.NoPreDecAck
 
         -- Unconditional/backwards
         isCondBrBack inst = slice d6 d0 inst == 0b1100011 && testBit inst 31
         isUncondBr inst = slice d6 d0 inst == 0b1101111
+        isValidJalr inst md = FetchT.isValidInst md && slice d6 d0 inst == 0b1100111
         predictBr pc inst md = if FetchT.isValidInst md then next else Nothing
             where
                 next = if isCondBrBack inst then Just (pc + FetchT.decodeRelBrOffset inst)

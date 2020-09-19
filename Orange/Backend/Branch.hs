@@ -22,7 +22,7 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
             0b0 -> condSatisfied_
             0b1 -> not condSatisfied_
         commit = case mode of
-            0b11 -> -- jal: should be handled by frontend but not yet
+            0b11 -> -- jal
                 if FetchT.branchPredicted meta == Just (pc + FetchT.decodeJalOffset inst) then
                     PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
                 else

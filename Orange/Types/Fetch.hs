@@ -12,7 +12,7 @@ data Metadata = Metadata {
 } deriving (Generic, NFDataX, Show)
 data BackendCmd = NoCmd | ApplyBranch (PC, (PC, PredictionPref))
     deriving (Generic, NFDataX, Show)
-data PreDecodeCmd = NoPreDecCmd | EarlyRectifyBranch (Maybe PC, PC)
+data PreDecodeCmd = NoPreDecCmd | EarlyRectifyBranch PC
     deriving (Generic, NFDataX, Show)
 data PreDecodeAck = AckExceptionResolved | NoPreDecAck
     deriving (Generic, NFDataX, Show)

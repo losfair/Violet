@@ -19,17 +19,13 @@ pc beCmd pdGroup pushCap = current
         current = register (0x0, FetchT.validMetadata) (fmap nextPC $ bundle (pushCap, beCmd, pdCmd, current))
         nextPC (pushCap, beCmd, pdCmd, current) = case (pushCap, beCmd, pdCmd, current) of
             (_, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata)
-            (FifoT.CanPush, _, FetchT.EarlyRectifyBranch (new, prev), _) -> (resolveRectifyTarget new prev, mkBranchEarlyRectifiedMetadata)
+            (FifoT.CanPush, _, FetchT.EarlyRectifyBranch new, _) -> (new, mkBranchEarlyRectifiedMetadata)
             (FifoT.CanPush, _, _, (currentPC, _)) -> (addPC currentPC, FetchT.validMetadata)
             (_, _, _, (currentPC, currentMd)) -> (currentPC, currentMd)
 
         maskPdCmd (valid, cmd) = case valid of
             True -> cmd
             False -> FetchT.NoPreDecCmd
-
-        resolveRectifyTarget new prev = case new of
-            Just x -> x
-            Nothing -> prev + 4
 
 
 addPC :: FetchT.PC -> FetchT.PC

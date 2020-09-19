@@ -19,6 +19,9 @@ wiring :: HiddenClockResetEnable dom
 wiring icacheImpl beCmd pushCap = decodeOut
     where
         pcOut = Orange.Frontend.PC.pc beCmd (bundle (pdCmd, pdAck)) pushCap
-        (pdCmd, pdAck, decodePorts) = unbundle $ Orange.Frontend.ICache.icache icacheImpl pcOut pushCap
+        (pcVal, _) = unbundle pcOut
+        btbPrediction = Orange.Frontend.BTB.btb beCmd pcVal
+
+        (pdCmd, pdAck, decodePorts) = unbundle $ Orange.Frontend.ICache.icache icacheImpl pcOut btbPrediction pushCap
         (decodePort1, decodePort2) = unbundle decodePorts
         decodeOut = Orange.Frontend.DecodeDep.decodeDep $ bundle (decodePort1, decodePort2, pushCap)
