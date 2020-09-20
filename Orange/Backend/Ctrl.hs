@@ -9,23 +9,33 @@ import qualified Orange.Types.Pipe as PipeT
 import qualified Orange.Types.Fetch as FetchT
 
 type HighMulState = BitVector 2
-data CtrlState = SIdle | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue | SMulH FetchT.PC GprT.RegIndex (BitVector 64) (BitVector 64) HighMulState
+data CtrlState = SIdle | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue | SMulH FetchT.PC GprT.RegIndex HighMulState
     deriving (Generic, NFDataX, Eq, Show)
+type MultiplierInput = (BitVector 64, BitVector 64)
+type MultiplierOutput = BitVector 64
 
-ctrl' :: (CtrlState, CtrlBusy)
-      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue))
-      -> ((CtrlState, CtrlBusy), (PipeT.Commit, CtrlBusy))
-ctrl' (state, busy) (issue, (rs1V, rs2V)) = ((state', busy'), (commit', busy))
+undefinedMultiplierInput :: MultiplierInput
+undefinedMultiplierInput = (undefined, undefined)
+
+ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
+      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), MultiplierOutput)
+      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), mulOut) = ((state', busy', mulInput'), (commit', busy, mulInput))
     where
-        (state', commit', busy') = case state of
+        (state', commit', busy', mulInput') = case state of
             SIdle -> case issue of
                 Just x -> onIssue x (rs1V, rs2V)
-                Nothing -> (state, PipeT.Bubble, Idle)
-            SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V)), Idle)
+                Nothing -> (state, PipeT.Bubble, Idle, undefinedMultiplierInput)
+            SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V)), Idle, undefinedMultiplierInput)
+            SMulH pc rd s -> case s of
+                0b00 -> (SMulH pc rd 0b01, PipeT.Bubble, Busy, undefinedMultiplierInput)
+                0b01 -> (SMulH pc rd 0b10, PipeT.Bubble, Busy, undefinedMultiplierInput)
+                0b10 -> (SMulH pc rd 0b11, PipeT.Bubble, Idle, undefinedMultiplierInput)
+                0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut)), Idle, undefinedMultiplierInput)
 
 onIssue :: (IssueT.IssuePort, IssueT.ControlIssue)
         -> (GprT.RegValue, GprT.RegValue)
-        -> (CtrlState, PipeT.Commit, CtrlBusy)
+        -> (CtrlState, PipeT.Commit, CtrlBusy, MultiplierInput)
 onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst of
     0b0110011 | testBit inst 25 -> -- mul/div
         case slice d14 d14 inst of
@@ -33,11 +43,8 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                 case slice d13 d12 inst of
                     0b00 ->
                         -- We don't need to activate the BUSY line here since MUL takes one cycle only
-                        (SMul pc (GprT.decodeRd inst) rs1V rs2V, PipeT.Bubble, Idle)
-                    x -> 
-                        (SIdle, PipeT.Ok (pc, Nothing), Idle)
-                        -- FIXME: Bad timing with mulh*
-                        {-|
+                        (SMul pc (GprT.decodeRd inst) rs1V rs2V, PipeT.Bubble, Idle, undefinedMultiplierInput)
+                    x ->
                         let (src1, src2) = case x of
                                             0b01 -> -- mulh
                                                 (signExtend rs1V, signExtend rs2V)
@@ -46,16 +53,22 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                                             _ -> -- 0b11: mulhu
                                                 (zeroExtend rs1V, zeroExtend rs2V)
                             in
-                                (SMulH pc (GprT.decodeRd inst) src1 src2 0, PipeT.Bubble, Busy)
-                        |-}
-            _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle)
-    _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle)
-onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Ok (pc, Nothing), Idle)
+                                (SMulH pc (GprT.decodeRd inst) 0, PipeT.Bubble, Busy, (src1, src2))
+            _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
+    _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
+onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
 
 ctrl :: HiddenClockResetEnable dom
      => Signal dom (Maybe (IssueT.IssuePort, IssueT.ControlIssue))
      -> Signal dom (GprT.RegValue, GprT.RegValue)
      -> Signal dom (PipeT.Commit, CtrlBusy)
-ctrl issue gprPair = m $ bundle (issue, gprPair)
+ctrl issue gprPair = bundle $ (commit, busy)
     where
-        m = mealy ctrl' (SIdle, Idle)
+        m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
+        (commit, busy, mulInput) = unbundle $ m $ bundle (issue, gprPair, mulOutput)
+        mulOutput = multiplier mulInput
+
+multiplier :: HiddenClockResetEnable dom
+           => Signal dom MultiplierInput
+           -> Signal dom MultiplierOutput
+multiplier x = register 0 $ register 0 $ register 0 $ fmap (\(a, b) -> a * b) x
