@@ -9,10 +9,21 @@ import qualified Orange.Types.Pipe as PipeT
 import qualified Orange.Types.Fetch as FetchT
 
 type HighMulState = BitVector 2
-data CtrlState = SIdle | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue | SMulH FetchT.PC GprT.RegIndex HighMulState
+data CtrlState = SIdle
+    | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue
+    | SMulH FetchT.PC GprT.RegIndex HighMulState
+    | SDiv FetchT.PC GprT.RegIndex DivType DivState
     deriving (Generic, NFDataX, Eq, Show)
 type MultiplierInput = (BitVector 64, BitVector 64)
 type MultiplierOutput = BitVector 64
+data DivType = SignedDiv | UnsignedDiv | SignedRem | UnsignedRem
+    deriving (Generic, NFDataX, Eq, Show)
+data DivState = DivState {
+    divDividend :: BitVector 32,
+    divDivisor :: BitVector 32,
+    divQuotient :: BitVector 32,
+    divRemainder :: BitVector 32
+} deriving (Generic, NFDataX, Eq, Show)
 
 undefinedMultiplierInput :: MultiplierInput
 undefinedMultiplierInput = (undefined, undefined)
@@ -32,6 +43,7 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), mulOut) = ((state', busy', m
                 0b01 -> (SMulH pc rd 0b10, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 0b10 -> (SMulH pc rd 0b11, PipeT.Bubble, Idle, undefinedMultiplierInput)
                 0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut)), Idle, undefinedMultiplierInput)
+            SDiv pc rd _ _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput) -- TODO: Implement div
 
 onIssue :: (IssueT.IssuePort, IssueT.ControlIssue)
         -> (GprT.RegValue, GprT.RegValue)
@@ -54,7 +66,16 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                                                 (zeroExtend rs1V, zeroExtend rs2V)
                             in
                                 (SMulH pc (GprT.decodeRd inst) 0, PipeT.Bubble, Busy, (src1, src2))
-            _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
+            0b1 -> -- div(u)/rem(u)
+                case slice d13 d12 inst of
+                    0b00 -> -- div
+                        (SDiv pc (GprT.decodeRd inst) SignedDiv (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                    0b01 -> -- divu
+                        (SDiv pc (GprT.decodeRd inst) UnsignedDiv (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                    0b10 -> -- rem
+                        (SDiv pc (GprT.decodeRd inst) SignedRem (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                    0b11 -> -- remu
+                        (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
     _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
 onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
 
@@ -72,3 +93,6 @@ multiplier :: HiddenClockResetEnable dom
            => Signal dom MultiplierInput
            -> Signal dom MultiplierOutput
 multiplier x = register 0 $ register 0 $ register 0 $ fmap (\(a, b) -> a * b) x
+
+mkDivState :: BitVector 32 -> BitVector 32 -> DivState
+mkDivState a b = DivState { divDividend = a, divDivisor = b, divQuotient = 0, divRemainder = 0 }
