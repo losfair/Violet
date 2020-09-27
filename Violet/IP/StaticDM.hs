@@ -35,10 +35,18 @@ instance DCacheImpl StaticDM where
             readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
             commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1, delayedReadPort)
             writePortD1 = register Nothing writePort
+
+            -- Commit stage doesn't handle DCache exception and write disable in the same cycle.
+            -- So we need to handle it here.
+            writePortD1Gated = fmap f $ bundle (writePortD1, commitPort)
+                where
+                    f (wp, cp) = case cp of
+                        PipeT.Exc _ -> Nothing
+                        _ -> wp
             
             -- stage 3
-            writePortFinal = register Nothing writePortD1
-            weReq = register NoWrite (fmap transformWeReq writePortD1)
+            writePortFinal = register Nothing writePortD1Gated
+            weReq = register NoWrite (fmap transformWeReq writePortD1Gated)
             writeCommitPort = fmap transformWriteCommit $ bundle (writePortFinal, weCommit)
 
             transformReadPort req = case req of
