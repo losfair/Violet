@@ -19,7 +19,7 @@ import qualified Violet.Backend.Wiring
 
 test :: Prelude.IO ()
 test = do
-    Prelude.putStrLn $ Data.List.intercalate "\n" $ Prelude.map (showCommitLog . snd) $ sampleN 3000 (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
+    Prelude.putStrLn $ Data.List.intercalate "\n" $ Prelude.map (showCommitLog . snd) $ sampleN 12000 (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
 
 showCommitLog :: CommitT.CommitLog -> Prelude.String
 showCommitLog log = showPort (CommitT.pc1 log, CommitT.writePort1 log) Prelude.++ " " Prelude.++ showPort (CommitT.pc2 log, CommitT.writePort2 log)
@@ -40,15 +40,17 @@ runCore' = bundle (frontendOut, commitLog)
         (beCmd, commitLog, fifoPushCap, sysOut) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
         sysIn = sysbusProvider sysOut
 
+type CycleCounter = BitVector 64
+
 sysbusProvider :: HiddenClockResetEnable dom
                => Signal dom CtrlT.SystemBusOut
                -> Signal dom CtrlT.SystemBusIn
-sysbusProvider = mealy sysbusProvider' (False, emptySystemBusIn)
+sysbusProvider = mealy sysbusProvider' (False, emptySystemBusIn, 0)
 
-sysbusProvider' :: (Bool, CtrlT.SystemBusIn)
+sysbusProvider' :: (Bool, CtrlT.SystemBusIn, CycleCounter)
                 -> CtrlT.SystemBusOut
-                -> ((Bool, CtrlT.SystemBusIn), CtrlT.SystemBusIn)
-sysbusProvider' (active, sysIn) sysOut = ((active', sysIn'), sysIn)
+                -> ((Bool, CtrlT.SystemBusIn, CycleCounter), CtrlT.SystemBusIn)
+sysbusProvider' (active, sysIn, cycles) sysOut = ((active', sysIn', cycles + 1), sysIn)
     where
         oIoBus = CtrlT.oIoBus sysOut
         (active', sysIn') = case active of
@@ -60,6 +62,12 @@ sysbusProvider' (active, sysIn) sysOut = ((active', sysIn'), sysIn)
                 0xfe000000 -> case CtrlT.oIoWrite oIoBus of
                     True -> Trace.trace ("Putchar: " Prelude.++ (show $ chr (fromIntegral (CtrlT.oIoData oIoBus)))) CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = undefined }
                     False -> undefined -- read not allowed
+                0xfe000010 -> case CtrlT.oIoWrite oIoBus of
+                    True -> undefined -- write not allowed
+                    False -> CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = slice d31 d0 cycles }
+                0xfe000014 -> case CtrlT.oIoWrite oIoBus of
+                    True -> undefined -- write not allowed
+                    False -> CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = slice d63 d32 cycles }
                 _ -> Trace.trace ("bad io address: " Prelude.++ (show $ CtrlT.oIoAddr oIoBus)) undefined -- bad address
             False -> emptyIOBusIn
 
