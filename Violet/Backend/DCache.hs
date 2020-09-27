@@ -59,7 +59,7 @@ prepareWrite s i = case s of
     SelByte0 -> (i, 0b0001)
     SelByte1 -> (shiftL i 8, 0b0010)
     SelByte2 -> (shiftL i 16, 0b0100)
-    SelByte3 -> (shiftL i 23, 0b1000)
+    SelByte3 -> (shiftL i 24, 0b1000)
     SelHalf0 -> (i, 0b0011)
     SelHalf1 -> (shiftL i 16, 0b1100)
     SelWord -> (i, 0b1111)
