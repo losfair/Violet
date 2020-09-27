@@ -33,7 +33,7 @@ instance DCacheImpl StaticDM where
             delayedReadPort = register 0 readPort
             forwardedReadResult = writeForward delayedReadPort rawReadResult writePortFinal
             readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
-            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1)
+            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1, delayedReadPort)
             writePortD1 = register Nothing writePort
             
             -- stage 3
@@ -74,9 +74,11 @@ instance DCacheImpl StaticDM where
                         SelHalf0 -> ext16 (ram1 ++# ram0)
                         SelHalf1 -> ext16 (ram3 ++# ram2)
                         SelWord -> ram3 ++# ram2 ++# ram1 ++# ram0
-            transformCommitPort (pc, rd, readRes, writePort) = case (readRes, writePort) of
-                (Just x, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x))
-                (_, Just _) -> PipeT.Ok (pc, Nothing)
+            transformCommitPort (pc, rd, readRes, writePort, readPort) = case (readRes, writePort, readPort) of
+                (_, Just (waddr, wdata, _), _) | isIoAddr waddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemWrite pc waddr wdata)
+                (_, _, raddr) | isIoAddr raddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemRead pc rd raddr)
+                (Just x, _, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x))
+                (_, Just _, _) -> PipeT.Ok (pc, Nothing)
                 _ -> PipeT.Bubble
             transformWriteCommit (writePort, weCommit) = case weCommit of
                 CanWrite -> writePort
@@ -130,3 +132,6 @@ mkByteRam getRange getWe fileName readPort writePort = readResult
 ramIndex :: MemAddr
          -> Unsigned RamBits
 ramIndex x = unpack $ slice (SNat :: SNat (2 + RamBits - 1)) (SNat :: SNat 2) x
+
+isIoAddr :: MemAddr -> Bool
+isIoAddr x = slice d31 d28 x == 0xf

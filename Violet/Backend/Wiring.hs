@@ -29,8 +29,9 @@ wiring :: HiddenClockResetEnable dom
        => DCacheT.DCacheImpl a
        => a
        -> Signal dom (FifoT.FifoItem, FifoT.FifoItem)
-       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap)
-wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
+       -> Signal dom CtrlT.SystemBusIn
+       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut)
+wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut)
     where
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Violet.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
@@ -44,7 +45,7 @@ wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
         intAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
         branchUnit = Violet.Backend.Branch.branch (fmap IssueT.fuBranch fuActivation) gprPort1
         (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
-        (ctrlUnit, ctrlBusy) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc
+        (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
 
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
         commitStagesIn1 =
