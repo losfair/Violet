@@ -29,9 +29,9 @@ undefinedMultiplierInput :: MultiplierInput
 undefinedMultiplierInput = (undefined, undefined)
 
 ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
-      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), MultiplierOutput)
+      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput)
       -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput))
-ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), mulOut) = ((state', busy', mulInput'), (commit', busy, mulInput))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut) = ((state', busy', mulInput'), (commit', busy, mulInput))
     where
         (state', commit', busy', mulInput') = case state of
             SIdle -> case issue of
@@ -82,11 +82,12 @@ onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Ok (pc, N
 ctrl :: HiddenClockResetEnable dom
      => Signal dom (Maybe (IssueT.IssuePort, IssueT.ControlIssue))
      -> Signal dom (GprT.RegValue, GprT.RegValue)
+     -> Signal dom (Maybe PipeT.EarlyException)
      -> Signal dom (PipeT.Commit, CtrlBusy)
-ctrl issue gprPair = bundle $ (commit, busy)
+ctrl issue gprPair earlyExc = bundle $ (commit, busy)
     where
         m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
-        (commit, busy, mulInput) = unbundle $ m $ bundle (issue, gprPair, mulOutput)
+        (commit, busy, mulInput) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput)
         mulOutput = multiplier mulInput
 
 multiplier :: HiddenClockResetEnable dom

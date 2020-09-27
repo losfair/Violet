@@ -44,9 +44,9 @@ wiring dcacheImpl frontPush = bundle $ (backendCmd, commitLog, fifoPushCap)
         intAlu2 = Orange.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
         branchUnit = Orange.Backend.Branch.branch (fmap IssueT.fuBranch fuActivation) gprPort1
         (dcacheUnit, dcWeReq) = Orange.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
-        (ctrlUnit, ctrlBusy) = unbundle $ Orange.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1
+        (ctrlUnit, ctrlBusy) = unbundle $ Orange.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc
 
-        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog) = unbundle $ Orange.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
+        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc) = unbundle $ Orange.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
         commitStagesIn1 =
             selectCommit (selectCommit intAlu1 branchUnit) ctrlUnit
             :> commitPipe1 !! 0
