@@ -1,1 +1,1 @@
-# OrangeCore
+# VioletCore
