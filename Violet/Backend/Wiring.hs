@@ -48,10 +48,13 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
 
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
+
+        -- XXX: `ctrlUnit` may send non-pipelined signals and therefore must has the highest priority.
+        -- This should be fixed. 
         commitStagesIn1 =
             selectCommit (selectCommit intAlu1 branchUnit) ctrlUnit
             :> commitPipe1 !! 0
-            :> selectCommit (commitPipe1 !! 1) dcacheUnit
+            :> selectCommit dcacheUnit (commitPipe1 !! 1)
             :> Nil
         commitStagesIn2 =
             intAlu2
