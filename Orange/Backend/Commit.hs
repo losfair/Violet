@@ -79,7 +79,8 @@ transformCommit (PipeT.Ok (pc, Just (PipeT.GPR i v))) = (Just pc, Just (i, v), F
 transformCommit (PipeT.Ok (pc, Nothing)) = (Just pc, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved)
 transformCommit PipeT.Bubble = (Nothing, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved)
 transformCommit (PipeT.Exc (pc, e)) = case e of
-    PipeT.EarlyExcResolution nextPC -> (Nothing, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved)
+    PipeT.EarlyExcResolution (pc, nextPC, Just (PipeT.GPR i v)) -> (Just pc, Just (i, v), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved)
+    PipeT.EarlyExcResolution (pc, nextPC, Nothing) -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved)
     PipeT.BranchLink nextPC idx linkPC -> (Just pc, Just (idx, linkPC), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcNotResolved)
     PipeT.BranchFalsePos nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken)), Nothing, ExcNotResolved)
     PipeT.BranchFalseNeg nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken)), Nothing, ExcNotResolved)

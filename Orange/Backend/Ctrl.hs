@@ -13,6 +13,7 @@ data CtrlState = SIdle
     | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue
     | SMulH FetchT.PC GprT.RegIndex HighMulState
     | SDiv FetchT.PC GprT.RegIndex DivType DivState
+    | SCsrReadWrite FetchT.PC GprT.RegIndex CsrIndex GprT.RegValue
     deriving (Generic, NFDataX, Eq, Show)
 type MultiplierInput = (BitVector 64, BitVector 64)
 type MultiplierOutput = BitVector 64
@@ -34,9 +35,10 @@ ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
 ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut) = ((state', busy', mulInput'), (commit', busy, mulInput))
     where
         (state', commit', busy', mulInput') = case state of
-            SIdle -> case issue of
-                Just x -> onIssue x (rs1V, rs2V)
-                Nothing -> (state, PipeT.Bubble, Idle, undefinedMultiplierInput)
+            SIdle -> case (earlyExc, issue) of
+                (Just earlyExc, _) -> onEarlyExc earlyExc
+                (_, Just x) -> onIssue x (rs1V, rs2V)
+                (_, Nothing) -> (state, PipeT.Bubble, Idle, undefinedMultiplierInput)
             SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V)), Idle, undefinedMultiplierInput)
             SMulH pc rd s -> case s of
                 0b00 -> (SMulH pc rd 0b01, PipeT.Bubble, Busy, undefinedMultiplierInput)
@@ -44,6 +46,12 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut) = ((state'
                 0b10 -> (SMulH pc rd 0b11, PipeT.Bubble, Idle, undefinedMultiplierInput)
                 0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut)), Idle, undefinedMultiplierInput)
             SDiv pc rd _ _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput) -- TODO: Implement div
+            SCsrReadWrite pc dst i v -> (SIdle, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc, pc + 4, Nothing)), Idle, undefinedMultiplierInput)
+
+onEarlyExc :: PipeT.EarlyException -> (CtrlState, PipeT.Commit, CtrlBusy, MultiplierInput)
+onEarlyExc e = case e of
+    PipeT.CsrReadWrite pc dst i v -> (SCsrReadWrite pc dst i v, PipeT.Bubble, Busy, undefinedMultiplierInput)
+    PipeT.DecodeFailure pc -> (SIdle, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc, pc + 4, Nothing)), Idle, undefinedMultiplierInput)
 
 onIssue :: (IssueT.IssuePort, IssueT.ControlIssue)
         -> (GprT.RegValue, GprT.RegValue)
@@ -77,7 +85,7 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                     0b11 -> -- remu
                         (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
     _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
-onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
+onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.DecodeFailure pc), Idle, undefinedMultiplierInput)
 
 ctrl :: HiddenClockResetEnable dom
      => Signal dom (Maybe (IssueT.IssuePort, IssueT.ControlIssue))
