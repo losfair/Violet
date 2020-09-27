@@ -51,7 +51,7 @@ sysbusProvider' :: (Bool, CtrlT.SystemBusIn)
 sysbusProvider' (active, sysIn) sysOut = ((active', sysIn'), sysIn)
     where
         oIoBus = CtrlT.oIoBus sysOut
-        (active', sysIn') = case (Trace.trace (show active) active) of
+        (active', sysIn') = case active of
             True -> (if CtrlT.oIoValid oIoBus then True else False, emptySystemBusIn)
             False -> (if CtrlT.oIoValid oIoBus then True else False, CtrlT.SystemBusIn { CtrlT.iIoBus = ioBus' })
 
