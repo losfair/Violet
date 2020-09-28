@@ -29,7 +29,10 @@ icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdA
             where
                 f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
         regAccessRes = FifoT.gatedRegister emptyResultPair pushCap afterPrediction
-        (pdCmdReg, pdAckReg) = unbundle $ FifoT.gatedRegister (FetchT.NoPreDecCmd, FetchT.NoPreDecAck) pushCap $ bundle (pdCmd, pdAck)
+
+        -- Reduce latency for predicted branches by one cycle
+        -- (pdCmdReg, pdAckReg) = unbundle $ FifoT.gatedRegister (FetchT.NoPreDecCmd, FetchT.NoPreDecAck) pushCap $ bundle (pdCmd, pdAck)
+        (pdCmdReg, pdAckReg) = (pdCmd, pdAck)
 
         rectifyApplyBuf = FifoT.gatedRegister False pushCap $ fmap f $ bundle (rectifyApplyBuf, delayedFetchMd, pdCmd)
             where
