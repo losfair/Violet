@@ -53,7 +53,7 @@ dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurre
 decodeDep' :: (FifoT.FifoItem, FifoT.FifoItem, (FetchT.Inst, Activation, RegLayout))
            -> ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata), FifoT.FifoPushCap)
            -> ((FifoT.FifoItem, FifoT.FifoItem, (FetchT.Inst, Activation, RegLayout)), (FifoT.FifoItem, FifoT.FifoItem))
-decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2), pushCap) = ((bundle1', bundle2', (inst2, activation2, regLayout2)), (bundle1, bundle2))
+decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2), pushCap) = ((bundle1', bundle2', lastDecoded'), (bundle1, bundle2))
     where
         (activation1, regLayout1, stall1) = decode inst1
         (activation2, regLayout2, stall2) = decode inst2
@@ -61,6 +61,10 @@ decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2)
         concurrency2 = dep (inst1, activation1, regLayout1) (inst2, activation2, regLayout2)
         bundle1' = if pushCap == FifoT.CanPush && FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1, activation1, regLayout1, concurrency1, stall1) else FifoT.Bubble
         bundle2' = if pushCap == FifoT.CanPush && FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2, activation2, regLayout2, concurrency2, stall2) else FifoT.Bubble
+        lastDecoded' = case (FetchT.isValidInst md2, FetchT.isValidInst md1) of
+            (True, _) -> (inst2, activation2, regLayout2)
+            (False, True) -> (inst1, activation1, regLayout1)
+            _ -> lastDecoded
 
 decodeDep :: HiddenClockResetEnable dom
           => Signal dom ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata), FifoT.FifoPushCap)
