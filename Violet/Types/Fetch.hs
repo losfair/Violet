@@ -17,6 +17,10 @@ data PreDecodeCmd = NoPreDecCmd | EarlyRectifyBranch PC
 data PreDecodeAck = AckExceptionResolved | NoPreDecAck
     deriving (Generic, NFDataX, Show)
 data PredictionPref = Taken | NotTaken | NoPref deriving (Generic, NFDataX, Show)
+data HistoryUpdate = HistoryUpdate {
+    hFrom :: PC,
+    hTaken :: Bool
+} deriving (Generic, NFDataX, Show)
 
 emptyMetadata :: Metadata
 emptyMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, isValidInst = False }

@@ -9,7 +9,7 @@ intAlu' :: Maybe IssueT.IssuePort
         -> (GprT.RegValue, GprT.RegValue)
         -> PipeT.Commit
 intAlu' Nothing _ = PipeT.Bubble
-intAlu' (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd out)
+intAlu' (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd out, Nothing)
     where
         rd = GprT.decodeRd inst
         arithFunct3 = slice d14 d12 inst

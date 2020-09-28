@@ -48,12 +48,12 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
             SWaitForEarlyExcAck -> case earlyExc of
                 Just _ -> (SWaitForEarlyExcAck, PipeT.Bubble, Idle, undefinedMultiplierInput)
                 Nothing -> (SIdle, PipeT.Bubble, Idle, undefinedMultiplierInput)
-            SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V)), Idle, undefinedMultiplierInput)
+            SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V), Nothing), Idle, undefinedMultiplierInput)
             SMulH pc rd s -> case s of
                 0b00 -> (SMulH pc rd 0b01, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 0b01 -> (SMulH pc rd 0b10, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 0b10 -> (SMulH pc rd 0b11, PipeT.Bubble, Idle, undefinedMultiplierInput)
-                0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut)), Idle, undefinedMultiplierInput)
+                0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut), Nothing), Idle, undefinedMultiplierInput)
             SDiv pc rd ty ds -> (nextS, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 where
                     remainder_ = slice d30 d0 (divRemainder ds) ++# slice d31 d31 (divDividend ds)
@@ -65,7 +65,7 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
                             (remainder_, slice d30 d0 (divQuotient ds) ++# 0)
                     ds' = DivState { divDividend = dividend', divDivisor = divDivisor ds, divQuotient = quotient', divRemainder = remainder', divCounter = divCounter ds + 1 }
                     nextS = if divCounter ds == maxBound then SDivEnd pc rd ty ds' else SDiv pc rd ty ds'
-            SDivEnd pc rd ty ds -> (SIdle, PipeT.Ok (pc, Just (PipeT.GPR rd v)), Idle, undefinedMultiplierInput)
+            SDivEnd pc rd ty ds -> (SIdle, PipeT.Ok (pc, Just (PipeT.GPR rd v), Nothing), Idle, undefinedMultiplierInput)
                 where
                     v = case ty of
                         SignedDiv aNeg bNeg -> if xor aNeg bNeg then -(divQuotient ds) else divQuotient ds
@@ -122,7 +122,7 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                         (SDiv pc (GprT.decodeRd inst) (SignedRem (testBit rs1V 31) (testBit rs2V 31)) (mkDivStateS rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
                     0b11 -> -- remu
                         (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivStateU rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
-    _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
+    _ -> (SIdle, PipeT.Ok (pc, Nothing, Nothing), Idle, undefinedMultiplierInput)
 onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.DecodeFailure pc), Idle, undefinedMultiplierInput)
 
 ctrl :: HiddenClockResetEnable dom

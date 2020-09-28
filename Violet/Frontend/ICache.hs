@@ -13,9 +13,10 @@ icache :: HiddenClockResetEnable dom
        => a
        -> Signal dom (FetchT.PC, FetchT.Metadata)
        -> Signal dom FetchT.PC
+       -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
        -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-icache impl fetchReq btbPrediction pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
+icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -23,7 +24,7 @@ icache impl fetchReq btbPrediction pushCap = bundle (pdCmdReg, pdAckReg, regAcce
         (_, delayedFetchMd) = unbundle delayedFetchReq
         rawAccessRes = issueAccess impl alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
-        rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, accessRes)
+        rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, bhtPrediction, accessRes)
         (pdCmd, pdAck, afterPrediction) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
             where
                 f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
@@ -55,13 +56,14 @@ decodeAccessResult (Just rawRes, (pc, fetchMeta)) = ((pc1, inst1, md1), (pc2, in
 
 staticPredictNext :: (
                         FetchT.PC,
+                        (Maybe Bool, Maybe Bool),
                         ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
                      )
                   -> (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-staticPredictNext (btbPrediction, ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd, ack, (out1, out2))
+staticPredictNext (btbPrediction, (bht1, bht2), ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd, ack, (out1, out2))
     where
-        pred1 = predictBr pc1 inst1 md1
-        pred2 = predictBr pc2 inst2 md2
+        pred1 = predictBr pc1 inst1 md1 bht1
+        pred2 = predictBr pc2 inst2 md2 bht2
         jalr1 = isValidJalr inst1 md1
         jalr2 = isValidJalr inst2 md2
         (cmd, out1, out2) = case (pred1, pred2, jalr1, jalr2) of
@@ -73,12 +75,15 @@ staticPredictNext (btbPrediction, ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd
         ack = if FetchT.exceptionResolved md1 then FetchT.AckExceptionResolved else FetchT.NoPreDecAck
 
         -- Unconditional/backwards
-        isCondBrBack inst = slice d6 d0 inst == 0b1100011 && testBit inst 31
+        isCondBr inst = slice d6 d0 inst == 0b1100011
+        isCondBrBack inst = isCondBr inst && testBit inst 31
         isUncondBr inst = slice d6 d0 inst == 0b1101111
         isValidJalr inst md = FetchT.isValidInst md && slice d6 d0 inst == 0b1100111
-        predictBr pc inst md = if FetchT.isValidInst md then next else Nothing
+        predictBr pc inst md bht = if FetchT.isValidInst md then next else Nothing
             where
-                next = if isCondBrBack inst then Just (pc + FetchT.decodeRelBrOffset inst)
+                next = if isCondBr inst && bht == Just True then Just (pc + FetchT.decodeRelBrOffset inst)
+                        else if isCondBr inst && bht == Just False then Nothing
+                        else if isCondBrBack inst then Just (pc + FetchT.decodeRelBrOffset inst)
                         else if isUncondBr inst then Just (pc + FetchT.decodeJalOffset inst)
                         else Nothing
 

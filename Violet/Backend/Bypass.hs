@@ -55,7 +55,7 @@ foldCommitPipes i cp1 cp2 = fold folder mappedCp
         combinedCp = merge cp1 cp2
         mappedCp = map mapper combinedCp
 
-        mapper (PipeT.Ok (_, Just (PipeT.GPR i' v))) | i' == i = Just v
+        mapper (PipeT.Ok (_, Just (PipeT.GPR i' v), _)) | i' == i = Just v
         mapper _ = Nothing
 
         folder (Just x) _ = Just x

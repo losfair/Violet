@@ -24,20 +24,20 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
         commit = case mode of
             0b11 -> -- jal
                 if FetchT.branchPredicted meta == Just (pc + FetchT.decodeJalOffset inst) then
-                    PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
+                    PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)), Nothing)
                 else
                     PipeT.Exc (pc, PipeT.BranchLink (pc + FetchT.decodeJalOffset inst) rd (pc + 4))
             0b01 -> -- jalr: link
                 let dst = clearBit (rs1V + signExtend (slice d31 d20 inst)) 0 in
                     if FetchT.branchPredicted meta == Just dst then
-                        PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
+                        PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)), Nothing)
                     else
                         PipeT.Exc (pc, PipeT.BranchLink dst rd (pc + 4))
             _ -> -- 0b00: bcond
                 if not condSatisfied && FetchT.branchPredicted meta == Nothing then
-                    PipeT.Ok (pc, Nothing)
+                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = False })
                 else if condSatisfied && FetchT.branchPredicted meta == Just (pc + FetchT.decodeRelBrOffset inst) then
-                    PipeT.Ok (pc, Nothing)
+                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = True })
                 else if not condSatisfied then
                     PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4))
                 else -- condSatisfied

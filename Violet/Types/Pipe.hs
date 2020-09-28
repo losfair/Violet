@@ -21,7 +21,7 @@ data EarlyException = DecodeFailure FetchT.PC
     | IOMemRead FetchT.PC GprT.RegIndex MemAddr
     | IOMemWrite FetchT.PC MemAddr MemData
     deriving (Generic, NFDataX, Eq)
-data Commit = Ok (FetchT.PC, Maybe ArchRegister) | Exc (FetchT.PC, Exception) | Bubble
+data Commit = Ok (FetchT.PC, Maybe ArchRegister, Maybe FetchT.HistoryUpdate) | Exc (FetchT.PC, Exception) | Bubble
     deriving (Generic, NFDataX)
 data Recovery = IsRecovery | NotRecovery deriving (Generic, NFDataX, Show)
 

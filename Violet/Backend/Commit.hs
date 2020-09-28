@@ -20,13 +20,13 @@ commit' :: CommitState
                 CommitState,
                 (
                     GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog,
-                    Maybe PipeT.EarlyException
+                    Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate
                 )
             )
 commit' s (cp1, cp2, rp, dcWe) = (s', out)
     where
-        (pc1, wp1, bcmd1, earlyExc1, resolution1) = transformCommit cp1
-        (pc2_, wp2_, bcmd2, earlyExc2, _) = transformCommit cp2
+        (pc1, wp1, bcmd1, earlyExc1, resolution1, historyUpd1) = transformCommit cp1
+        (pc2_, wp2_, bcmd2, earlyExc2, _, _) = transformCommit cp2
 
         hadException = case (s, rp, resolution1) of
             (ExceptionPending, PipeT.IsRecovery, _) -> NoException
@@ -65,23 +65,23 @@ commit' s (cp1, cp2, rp, dcWe) = (s', out)
 
         -- DCache only commits on port 1 so we don't need to discard its result
         out = case hadException of
-            HadException -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Nothing)
-            HadEarlyException e -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Just e)
-            NoException -> (wp1, wp2, bcmd, dcWe, log, Nothing)
+            HadException -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Nothing, Nothing)
+            HadEarlyException e -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Just e, Nothing)
+            NoException -> (wp1, wp2, bcmd, dcWe, log, Nothing, historyUpd1)
 
 commit :: HiddenClockResetEnable dom
        => Signal dom (PipeT.Commit, PipeT.Commit, PipeT.Recovery, DCacheT.WriteEnable)
-       -> Signal dom (GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog, Maybe PipeT.EarlyException)
+       -> Signal dom (GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog, Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate)
 commit = mealy commit' NormalOperation
 
-transformCommit :: PipeT.Commit -> (Maybe FetchT.PC, GprT.WritePort, FetchT.BackendCmd, Maybe PipeT.EarlyException, Resolution)
-transformCommit (PipeT.Ok (pc, Just (PipeT.GPR i v))) = (Just pc, Just (i, v), FetchT.NoCmd, Nothing, ExcNotResolved)
-transformCommit (PipeT.Ok (pc, Nothing)) = (Just pc, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved)
-transformCommit PipeT.Bubble = (Nothing, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved)
+transformCommit :: PipeT.Commit -> (Maybe FetchT.PC, GprT.WritePort, FetchT.BackendCmd, Maybe PipeT.EarlyException, Resolution, Maybe FetchT.HistoryUpdate)
+transformCommit (PipeT.Ok (pc, Just (PipeT.GPR i v), historyUpd)) = (Just pc, Just (i, v), FetchT.NoCmd, Nothing, ExcNotResolved, historyUpd)
+transformCommit (PipeT.Ok (pc, Nothing, historyUpd)) = (Just pc, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved, historyUpd)
+transformCommit PipeT.Bubble = (Nothing, Nothing, FetchT.NoCmd, Nothing, ExcNotResolved, Nothing)
 transformCommit (PipeT.Exc (pc, e)) = case e of
-    PipeT.EarlyExcResolution (nextPC, Just (PipeT.GPR i v)) -> (Just pc, Just (i, v), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved)
-    PipeT.EarlyExcResolution (nextPC, Nothing) -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved)
-    PipeT.BranchLink nextPC idx linkPC -> (Just pc, Just (idx, linkPC), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcNotResolved)
-    PipeT.BranchFalsePos nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken)), Nothing, ExcNotResolved)
-    PipeT.BranchFalseNeg nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken)), Nothing, ExcNotResolved)
-    PipeT.EarlyExc e -> (Nothing, Nothing, FetchT.NoCmd, Just e, ExcNotResolved)
+    PipeT.EarlyExcResolution (nextPC, Just (PipeT.GPR i v)) -> (Just pc, Just (i, v), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved, Nothing)
+    PipeT.EarlyExcResolution (nextPC, Nothing) -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved, Nothing)
+    PipeT.BranchLink nextPC idx linkPC -> (Just pc, Just (idx, linkPC), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcNotResolved, Nothing)
+    PipeT.BranchFalsePos nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken)), Nothing, ExcNotResolved, Nothing)
+    PipeT.BranchFalseNeg nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken)), Nothing, ExcNotResolved, Nothing)
+    PipeT.EarlyExc e -> (Nothing, Nothing, FetchT.NoCmd, Just e, ExcNotResolved, Nothing)

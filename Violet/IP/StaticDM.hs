@@ -85,8 +85,8 @@ instance DCacheImpl StaticDM where
             transformCommitPort (pc, rd, readRes, writePort, readPort) = case (readRes, writePort, readPort) of
                 (_, Just (waddr, wdata, _), _) | isIoAddr waddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemWrite pc waddr wdata)
                 (_, _, raddr) | isIoAddr raddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemRead pc rd raddr)
-                (Just x, _, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x))
-                (_, Just _, _) -> PipeT.Ok (pc, Nothing)
+                (Just x, _, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x), Nothing)
+                (_, Just _, _) -> PipeT.Ok (pc, Nothing, Nothing)
                 _ -> PipeT.Bubble
             transformWriteCommit (writePort, weCommit) = case weCommit of
                 CanWrite -> writePort

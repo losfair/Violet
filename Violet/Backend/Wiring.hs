@@ -30,8 +30,8 @@ wiring :: HiddenClockResetEnable dom
        => a
        -> Signal dom (FifoT.FifoItem, FifoT.FifoItem)
        -> Signal dom CtrlT.SystemBusIn
-       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut)
-wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut)
+       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut, Maybe FetchT.HistoryUpdate)
+wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut, historyUpd)
     where
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Violet.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
@@ -47,7 +47,7 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
         (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
 
-        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
+        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
 
         -- XXX: `ctrlUnit` may send non-pipelined signals and therefore must has the highest priority.
         -- This should be fixed. 
