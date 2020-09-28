@@ -16,6 +16,8 @@ import qualified Violet.IP.StaticIM
 import qualified Violet.IP.StaticDM
 import qualified Violet.Frontend.Wiring
 import qualified Violet.Backend.Wiring
+import qualified System.IO
+import qualified System.IO.Unsafe
 
 test :: Prelude.IO ()
 test = do
@@ -60,7 +62,7 @@ sysbusProvider' (active, sysIn, cycles) sysOut = ((active', sysIn', cycles + 1),
         ioBus' = case CtrlT.oIoValid oIoBus of
             True -> case CtrlT.oIoAddr oIoBus of
                 0xfe000000 -> case CtrlT.oIoWrite oIoBus of
-                    True -> Trace.trace ("Putchar: " Prelude.++ (show $ chr (fromIntegral (CtrlT.oIoData oIoBus)))) CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = undefined }
+                    True -> System.IO.Unsafe.unsafePerformIO $ doPutChar (chr (fromIntegral (CtrlT.oIoData oIoBus)))
                     False -> undefined -- read not allowed
                 0xfe000010 -> case CtrlT.oIoWrite oIoBus of
                     True -> undefined -- write not allowed
@@ -76,3 +78,8 @@ emptySystemBusIn = CtrlT.SystemBusIn {
 }
 
 emptyIOBusIn = CtrlT.IOBusIn { CtrlT.iIoReady = False, CtrlT.iIoData = undefined }
+
+doPutChar :: Char -> Prelude.IO CtrlT.IOBusIn
+doPutChar x = do
+    System.IO.hPutChar System.IO.stderr x
+    return CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = undefined }
