@@ -15,19 +15,21 @@ data CtrlState = SIdle
     | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue
     | SMulH FetchT.PC GprT.RegIndex HighMulState
     | SDiv FetchT.PC GprT.RegIndex DivType DivState
+    | SDivEnd FetchT.PC GprT.RegIndex DivType DivState
     | SCsrReadWrite FetchT.PC GprT.RegIndex CsrIndex GprT.RegValue
     | SIOMemRead FetchT.PC GprT.RegIndex DCacheT.MemAddr
     | SIOMemWrite FetchT.PC DCacheT.MemAddr DCacheT.MemData
     deriving (Generic, NFDataX, Eq, Show)
 type MultiplierInput = (BitVector 64, BitVector 64)
 type MultiplierOutput = BitVector 64
-data DivType = SignedDiv | UnsignedDiv | SignedRem | UnsignedRem
+data DivType = SignedDiv Bool Bool | UnsignedDiv | SignedRem Bool Bool | UnsignedRem
     deriving (Generic, NFDataX, Eq, Show)
 data DivState = DivState {
     divDividend :: BitVector 32,
     divDivisor :: BitVector 32,
     divQuotient :: BitVector 32,
-    divRemainder :: BitVector 32
+    divRemainder :: BitVector 32,
+    divCounter :: Index 32
 } deriving (Generic, NFDataX, Eq, Show)
 
 undefinedMultiplierInput :: MultiplierInput
@@ -52,7 +54,24 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
                 0b01 -> (SMulH pc rd 0b10, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 0b10 -> (SMulH pc rd 0b11, PipeT.Bubble, Idle, undefinedMultiplierInput)
                 0b11 -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 mulOut)), Idle, undefinedMultiplierInput)
-            SDiv pc rd _ _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput) -- TODO: Implement div
+            SDiv pc rd ty ds -> (nextS, PipeT.Bubble, Busy, undefinedMultiplierInput)
+                where
+                    remainder_ = slice d30 d0 (divRemainder ds) ++# slice d31 d31 (divDividend ds)
+                    dividend' = slice d30 d0 (divDividend ds) ++# 0
+                    (remainder', quotient') =
+                        if remainder_ >= (divDivisor ds) then
+                            (remainder_ - divDivisor ds, slice d30 d0 (divQuotient ds) ++# 1)
+                        else
+                            (remainder_, slice d30 d0 (divQuotient ds) ++# 0)
+                    ds' = DivState { divDividend = dividend', divDivisor = divDivisor ds, divQuotient = quotient', divRemainder = remainder', divCounter = divCounter ds + 1 }
+                    nextS = if divCounter ds == maxBound then SDivEnd pc rd ty ds' else SDiv pc rd ty ds'
+            SDivEnd pc rd ty ds -> (SIdle, PipeT.Ok (pc, Just (PipeT.GPR rd v)), Idle, undefinedMultiplierInput)
+                where
+                    v = case ty of
+                        SignedDiv aNeg bNeg -> if xor aNeg bNeg then -(divQuotient ds) else divQuotient ds
+                        UnsignedDiv -> divQuotient ds
+                        SignedRem aNeg bNeg -> if aNeg then -(divRemainder ds) else divRemainder ds
+                        UnsignedRem -> divRemainder ds
             SCsrReadWrite pc dst i v -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
             SIOMemRead pc dst _ -> case iIoReady (iIoBus sysIn) of
                 True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Just (PipeT.GPR dst $ iIoData (iIoBus sysIn)))), Idle, undefinedMultiplierInput)
@@ -96,13 +115,13 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
             0b1 -> -- div(u)/rem(u)
                 case slice d13 d12 inst of
                     0b00 -> -- div
-                        (SDiv pc (GprT.decodeRd inst) SignedDiv (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                        (SDiv pc (GprT.decodeRd inst) (SignedDiv (testBit rs1V 31) (testBit rs2V 31)) (mkDivStateS rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
                     0b01 -> -- divu
-                        (SDiv pc (GprT.decodeRd inst) UnsignedDiv (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                        (SDiv pc (GprT.decodeRd inst) UnsignedDiv (mkDivStateU rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
                     0b10 -> -- rem
-                        (SDiv pc (GprT.decodeRd inst) SignedRem (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                        (SDiv pc (GprT.decodeRd inst) (SignedRem (testBit rs1V 31) (testBit rs2V 31)) (mkDivStateS rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
                     0b11 -> -- remu
-                        (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivState rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+                        (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivStateU rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
     _ -> (SIdle, PipeT.Ok (pc, Nothing), Idle, undefinedMultiplierInput)
 onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.DecodeFailure pc), Idle, undefinedMultiplierInput)
 
@@ -123,5 +142,8 @@ multiplier :: HiddenClockResetEnable dom
            -> Signal dom MultiplierOutput
 multiplier x = register 0 $ register 0 $ register 0 $ fmap (\(a, b) -> a * b) x
 
-mkDivState :: BitVector 32 -> BitVector 32 -> DivState
-mkDivState a b = DivState { divDividend = a, divDivisor = b, divQuotient = 0, divRemainder = 0 }
+mkDivStateU :: BitVector 32 -> BitVector 32 -> DivState
+mkDivStateU a b = DivState { divDividend = a, divDivisor = b, divQuotient = 0, divRemainder = 0, divCounter = 0 }
+
+mkDivStateS :: BitVector 32 -> BitVector 32 -> DivState
+mkDivStateS a b = DivState { divDividend = if testBit a 31 then -a else a, divDivisor = if testBit b 31 then -b else b, divQuotient = 0, divRemainder = 0, divCounter = 0 }

@@ -21,7 +21,7 @@ import qualified System.IO.Unsafe
 
 test :: Prelude.IO ()
 test = do
-    Prelude.putStrLn $ Data.List.intercalate "\n" $ Prelude.map (showCommitLog . snd) $ sampleN 12000 (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
+    Prelude.putStrLn $ Data.List.intercalate "\n" $ Prelude.map (showCommitLog . snd) $ sampleN 50000 (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
 
 showCommitLog :: CommitT.CommitLog -> Prelude.String
 showCommitLog log = showPort (CommitT.pc1 log, CommitT.writePort1 log) Prelude.++ " " Prelude.++ showPort (CommitT.pc2 log, CommitT.writePort2 log)
