@@ -38,7 +38,13 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         disableFirstPort = exceptionResolvedAt2
         enableSecondPort = canConcurrentIssue item2
 
-        loadBlocked = (not disableFirstPort && hasLoadUse state item1) || (enableSecondPort && hasLoadUse state item2)
+        -- Load blocked if a load-use hazard is detected or we are resolving an exception.
+        -- We need to block on exception resolution because the DCache pipeline is separate from
+        -- the main commit pipelines and will not get reset on recovery signals.
+        loadBlocked =
+            (not disableFirstPort && hasLoadUse state item1) ||
+            (enableSecondPort && hasLoadUse state item2) ||
+            (isExceptionResolved && hasOngoingLoad state)
         ctrlBlocked = ctrlFirstCycle state || ctrlBusy == CtrlT.Busy
 
         pipelineBlocked = loadBlocked || ctrlBlocked
@@ -71,6 +77,11 @@ issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
 issue = mealy issue' (IssueState { loadActivated = repeat Nothing, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+
+hasOngoingLoad :: IssueState -> Bool
+hasOngoingLoad state = case findIndex (\x -> x /= Nothing) (loadActivated state) of
+    Just _ -> True
+    Nothing -> False
 
 hasLoadUse :: IssueState -> FifoT.FifoItem -> Bool
 hasLoadUse state item = case item of

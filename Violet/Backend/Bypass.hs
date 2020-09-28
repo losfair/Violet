@@ -25,6 +25,8 @@ bypassOne' (cp1, cp2, (rs1Fetched, rs2Fetched), (_, inst, _)) =
         -- rs2Bypassed = Debug.Trace.trace ("RS2-bypass: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs2Bypassed_ Prelude.++ ">") rs2Bypassed_
         rs1Val = overrideRegfetch rs1Fetched rs1Bypassed
         rs2Val = overrideRegfetch rs2Fetched rs2Bypassed
+        -- rs1Val = Debug.Trace.trace ("RS1-val: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs1Val_ Prelude.++ ">") rs1Val_
+        -- rs2Val = Debug.Trace.trace ("RS2-val: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs2Val_ Prelude.++ ">") rs2Val_
 
 bypass :: HiddenClockResetEnable dom
        => Signal dom ((IssuePort, IssuePort), ActivationMask)
