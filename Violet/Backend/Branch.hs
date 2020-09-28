@@ -28,7 +28,7 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
                 else
                     PipeT.Exc (pc, PipeT.BranchLink (pc + FetchT.decodeJalOffset inst) rd (pc + 4))
             0b01 -> -- jalr: link
-                let dst = rs1V + (signExtend $ slice d31 d20 inst) in
+                let dst = clearBit (rs1V + signExtend (slice d31 d20 inst)) 0 in
                     if FetchT.branchPredicted meta == Just dst then
                         PipeT.Ok (pc, Just (PipeT.GPR rd (pc + 4)))
                     else
