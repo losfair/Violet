@@ -1,0 +1,40 @@
+{
+    "arch": "riscv32",
+    "atomic-cas": false,
+    "cpu": "generic-rv32",
+    "data-layout": "e-m:e-p:32:32-i64:64-n32-S128",
+    "eh-frame-header": false,
+    "emit-debug-gdb-scripts": false,
+    "env": "",
+    "executables": true,
+    "features": "+m",
+    "is-builtin": true,
+    "linker": "rust-lld",
+    "linker-flavor": "ld.lld",
+    "pre-link-args": {
+        "ld.lld": ["-Tlinker.ld"]
+    },
+    "llvm-target": "riscv32",
+    "max-atomic-width": 0,
+    "os": "none",
+    "panic-strategy": "abort",
+    "relocation-model": "static",
+    "target-c-int-width": "32",
+    "target-endian": "little",
+    "target-pointer-width": "32",
+    "unsupported-abis": [
+      "cdecl",
+      "stdcall",
+      "fastcall",
+      "vectorcall",
+      "thiscall",
+      "aapcs",
+      "win64",
+      "sysv64",
+      "ptx-kernel",
+      "msp430-interrupt",
+      "x86-interrupt",
+      "amdgpu-kernel"
+    ],
+    "vendor": "unknown"
+  }
