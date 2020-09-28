@@ -61,9 +61,9 @@ decodeDep' (bundle1, bundle2, lastDecoded) ((pc1, inst1, md1), (pc2, inst2, md2)
         concurrency2 = dep (inst1, activation1, regLayout1) (inst2, activation2, regLayout2)
         bundle1' = if pushCap == FifoT.CanPush && FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1, activation1, regLayout1, concurrency1, stall1) else FifoT.Bubble
         bundle2' = if pushCap == FifoT.CanPush && FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2, activation2, regLayout2, concurrency2, stall2) else FifoT.Bubble
-        lastDecoded' = case (FetchT.isValidInst md2, FetchT.isValidInst md1) of
-            (True, _) -> (inst2, activation2, regLayout2)
-            (False, True) -> (inst1, activation1, regLayout1)
+        lastDecoded' = case (pushCap, FetchT.isValidInst md2, FetchT.isValidInst md1) of
+            (FifoT.CanPush, True, _) -> (inst2, activation2, regLayout2)
+            (FifoT.CanPush, False, True) -> (inst1, activation1, regLayout1)
             _ -> lastDecoded
 
 decodeDep :: HiddenClockResetEnable dom
