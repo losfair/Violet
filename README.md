@@ -2,8 +2,6 @@
 
 Dual-issue superscalar RISC-V processor written in [Clash](https://github.com/clash-lang/clash-compiler).
 
-Work in progress and not fully verified yet. Do not use for production.
-
 ## Features
 
 - RV32IM
@@ -15,3 +13,8 @@ Work in progress and not fully verified yet. Do not use for production.
 ## Architecture
 
 ![Architecture](res/Violet.svg)
+
+## Verification
+
+Violet is verified using cosimulation with a software model written in Rust. Verification isn't extensive though - currently
+only a small set of programs are tested. Don't tape out Violet yet :)
