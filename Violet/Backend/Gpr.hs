@@ -30,7 +30,7 @@ fifoItemToRegIndices :: FifoT.FifoItem -> (RegIndex, RegIndex)
 fifoItemToRegIndices item = (rs1, rs2)
     where
         inst = case item of
-            FifoT.Item (_, inst, _, _, _, _, _) -> inst
+            FifoT.Item (_, inst, _) -> inst
             _ -> 0
         rs1 = slice d19 d15 inst
         rs2 = slice d24 d20 inst

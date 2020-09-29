@@ -15,8 +15,8 @@ icache :: HiddenClockResetEnable dom
        -> Signal dom FetchT.PC
        -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
-       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regAccessRes)
+       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem))
+icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -25,10 +25,20 @@ icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdA
         rawAccessRes = issueAccess impl alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
         rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, bhtPrediction, accessRes)
-        (pdCmd, pdAck, afterPrediction) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
+        (pdCmd, pdAck, resultPair) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
             where
                 f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
-        regAccessRes = FifoT.gatedRegister emptyResultPair pushCap afterPrediction
+
+        issuePorts = fmap f $ bundle (pushCap, resultPair)
+            where
+                f (pushCap, ((pc1, inst1, md1), (pc2, inst2, md2))) = case pushCap of
+                    FifoT.CanPush ->
+                        (
+                            if FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1) else FifoT.Bubble,
+                            if FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2) else FifoT.Bubble
+                        )
+                    _ -> (FifoT.Bubble, FifoT.Bubble)
+        regIssuePorts = register (FifoT.Bubble, FifoT.Bubble) issuePorts
 
         -- Reduce latency for predicted branches by one cycle
         -- (pdCmdReg, pdAckReg) = unbundle $ FifoT.gatedRegister (FetchT.NoPreDecCmd, FetchT.NoPreDecAck) pushCap $ bundle (pdCmd, pdAck)

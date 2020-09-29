@@ -43,5 +43,5 @@ fifo :: HiddenClockResetEnable dom
 fifo = mealy fifo' (repeat Bubble, 0, 0, CanPush)
 
 mkFlush :: FifoItem -> Bool
-mkFlush (Item (_, _, md, _, _, _, _)) = FetchT.exceptionResolved md
+mkFlush (Item (_, _, md)) = FetchT.exceptionResolved md
 mkFlush Bubble = False

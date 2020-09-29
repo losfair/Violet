@@ -9,7 +9,6 @@ import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Commit as CommitT
 import qualified Violet.Types.Ctrl as CtrlT
-import qualified Violet.Frontend.DecodeDep as DecodeDep
 
 violetCore :: Clock XilinxSystem
           -> Reset XilinxSystem

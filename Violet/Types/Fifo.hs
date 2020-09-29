@@ -9,7 +9,7 @@ data FifoPushCap = CanPush | WillFull
     deriving (Generic, NFDataX, Eq, Show)
 data FifoPopReq = PopNothing | PopOne | PopTwo
     deriving (Generic, NFDataX, Eq)
-data FifoItem = Item DecodeDep.DecodeDepBundle | Bubble
+data FifoItem = Item (FetchT.PC, FetchT.Inst, FetchT.Metadata) | Bubble
     deriving (Generic, NFDataX, Show)
 
 isBubble :: FifoItem -> Bool
