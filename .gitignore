@@ -1,3 +1,5 @@
 *.hi
 *.o
 /verilog/
+/obj_dir/
+/VioletCore
