@@ -20,8 +20,13 @@ import qualified System.IO
 import qualified System.IO.Unsafe
 
 test :: Prelude.IO ()
-test = do
-    Prelude.putStrLn $ Data.List.intercalate "\n" $ Prelude.map (showCommitLog . snd) $ sampleN 50000 (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
+test = f l
+    where
+        f :: [((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog)] -> Prelude.IO ()
+        f (x:xs) = do
+            putStrLn $ showCommitLog $ snd x
+            f xs
+        l = sample_lazy (runCore' :: Signal System ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog))
 
 showCommitLog :: CommitT.CommitLog -> Prelude.String
 showCommitLog log = showPort (CommitT.pc1 log, CommitT.writePort1 log) Prelude.++ " " Prelude.++ showPort (CommitT.pc2 log, CommitT.writePort2 log)
@@ -38,8 +43,8 @@ runCore' :: HiddenClockResetEnable dom
         => Signal dom ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog)
 runCore' = bundle (frontendOut, commitLog)
     where
-        frontendOut = Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.StaticIM beCmd fifoPushCap
-        (beCmd, commitLog, fifoPushCap, sysOut) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
+        frontendOut = Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.StaticIM beCmd fifoPushCap historyUpd
+        (beCmd, commitLog, fifoPushCap, sysOut, historyUpd) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
         sysIn = sysbusProvider sysOut
 
 type CycleCounter = BitVector 64
