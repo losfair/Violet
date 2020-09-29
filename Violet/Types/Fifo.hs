@@ -4,7 +4,7 @@ import Clash.Prelude
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.DecodeDep as DecodeDep
 
-type FifoBits = 4 :: Nat
+type FifoBits = 5 :: Nat
 data FifoPushCap = CanPush | WillFull
     deriving (Generic, NFDataX, Eq, Show)
 data FifoPopReq = PopNothing | PopOne | PopTwo
