@@ -27,11 +27,10 @@ decode inst = case slice d6 d0 inst of
 dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
 dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
     where
-        branchConflict = actBranch act2 -- port 1 only
         memConflict = actLoad act2 || actStore act2 -- port 1 only
         ctrlConflict = actCtrl act1 || actCtrl act2
         exceptionConflict = actException act1 || actException act2
-        structuralHazard = branchConflict || memConflict || ctrlConflict || exceptionConflict
+        structuralHazard = memConflict || ctrlConflict || exceptionConflict
 
         inst1Rs1 = slice d19 d15 inst1
         inst1Rs2 = slice d24 d20 inst1

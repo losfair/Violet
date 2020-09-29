@@ -57,7 +57,8 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         amNormal = ActivationMask {
             amInt1 = lookActivation item1 DepT.actInt && not disableFirstPort,
             amInt2 = lookActivation item2 DepT.actInt && enableSecondPort,
-            amBranch = lookActivation item1 DepT.actBranch && not disableFirstPort,
+            amBranch1 = lookActivation item1 DepT.actBranch && not disableFirstPort,
+            amBranch2 = lookActivation item2 DepT.actBranch && enableSecondPort,
             amMem = lookActivation item1 (\x -> DepT.actLoad x || DepT.actStore x) && not disableFirstPort,
             amCtrl =
                 if lookActivation item1 DepT.actException && not disableFirstPort then Just CtrlDecodeException
@@ -144,7 +145,8 @@ emptyActivationMask :: ActivationMask
 emptyActivationMask = ActivationMask {
     amInt1 = False,
     amInt2 = False,
-    amBranch = False,
+    amBranch1 = False,
+    amBranch2 = False,
     amMem = False,
     amCtrl = Nothing
 }

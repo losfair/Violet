@@ -45,9 +45,9 @@ commit' s (cp1, cp2, rp, dcWe) = (s', out)
             _ -> Nothing
 
         -- Select the "earlier" backend command
-        bcmd = case bcmd1 of
-            FetchT.ApplyBranch _ -> bcmd1
-            _ -> bcmd2
+        bcmd = case (bcmd1, earlyExc1) of
+            (FetchT.NoCmd, Nothing) -> bcmd2
+            _ -> bcmd1
 
         s' = case (hadException, bcmd, earlyExc1, earlyExc2) of
             (NoException, FetchT.NoCmd, Nothing, Nothing) -> NormalOperation

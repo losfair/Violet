@@ -43,7 +43,8 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         recoveryPipe = Violet.Backend.Pipe.recoveryPipe recoveryStagesIn
         intAlu1 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt1 fuActivation) gprPort1
         intAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
-        branchUnit = Violet.Backend.Branch.branch (fmap IssueT.fuBranch fuActivation) gprPort1
+        branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
+        branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
         (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
         (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
 
@@ -52,12 +53,12 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         -- XXX: `ctrlUnit` may send non-pipelined signals and therefore must has the highest priority.
         -- This should be fixed. 
         commitStagesIn1 =
-            selectCommit (selectCommit intAlu1 branchUnit) ctrlUnit
+            selectCommit (selectCommit intAlu1 branchUnit1) ctrlUnit
             :> commitPipe1 !! 0
             :> selectCommit dcacheUnit (commitPipe1 !! 1)
             :> Nil
         commitStagesIn2 =
-            intAlu2
+            selectCommit intAlu2 branchUnit2
             :> commitPipe2 !! 0
             :> commitPipe2 !! 1
             :> Nil
