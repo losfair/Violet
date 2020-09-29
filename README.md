@@ -7,9 +7,10 @@ Work in progress and not fully verified yet. Do not use for production.
 ## Features
 
 - RV32IM
-- 9-stage in-order superscalar pipeline
-- BTB + static branch prediction
-- 120 MHz on Artix-7
+- 8-stage in-order superscalar pipeline
+- BTB + BHT for branch prediction
+- 110 MHz on Artix-7
+- 2.68 CoreMark/MHz
 
 ## Architecture
 
