@@ -84,4 +84,10 @@ mkTag :: FetchT.PC -> BitVector (30 - IndexBits)
 mkTag = slice d31 (SNat :: SNat (2 + IndexBits))
 
 mkOut :: (FetchT.PC, Entry) -> Maybe Bool
-mkOut (pc, entry) = if fromPC entry == mkTag pc then Just (testBit (taken entry) 1) else Nothing
+mkOut (pc, entry) =
+    if fromPC entry == mkTag pc then
+        case taken entry of
+            0b00 -> Just False
+            0b11 -> Just True
+            _ -> Nothing
+    else Nothing
