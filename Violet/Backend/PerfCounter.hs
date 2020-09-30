@@ -5,13 +5,16 @@ import Violet.Types.PerfCounter
 
 perfCounter :: HiddenClockResetEnable dom
             => Signal dom InstRetire
+            -> Signal dom BranchStat
             -> Signal dom PerfCounters
-perfCounter instRetire = c
+perfCounter instRetire branchStat = c
     where
-        c = register initPerfCounters (fmap update $ bundle (c, instRetire))
+        c = register initPerfCounters (fmap update $ bundle (c, instRetire, branchStat))
 
-update :: (PerfCounters, InstRetire) -> PerfCounters
-update (current, InstRetire instRetire) = PerfCounters {
+update :: (PerfCounters, InstRetire, BranchStat) -> PerfCounters
+update (current, InstRetire instRetire, branchStat) = PerfCounters {
     perfCycles = perfCycles current + 1,
-    perfInstRet = perfInstRet current + zeroExtend instRetire
+    perfInstRet = perfInstRet current + zeroExtend instRetire,
+    perfBranchHits = perfBranchHits current + if branchStat == BranchHit then 1 else 0,
+    perfBranchMisses = perfBranchMisses current + if branchStat == BranchMiss then 1 else 0
 }

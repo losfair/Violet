@@ -50,16 +50,24 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, per
                 case index of
                     0xc00 -> -- CYCLE
                         (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfCycles perfCtr), Nothing))
-                    0xc01 -> -- TIME
-                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfCycles perfCtr), Nothing))
-                    0xc02 -> -- INSTRET
-                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfInstRet perfCtr), Nothing))
                     0xc80 -> -- CYCLEH
                         (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc01 -> -- TIME
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfCycles perfCtr), Nothing))
                     0xc81 -> -- TIMEH
                         (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc02 -> -- INSTRET
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfInstRet perfCtr), Nothing))
                     0xc82 -> -- INSTRETH
                         (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfInstRet perfCtr), Nothing))
+                    0xc03 -> -- # of branch hits
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfBranchHits perfCtr), Nothing))
+                    0xc83 -> -- # of branch hits (H)
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfBranchHits perfCtr), Nothing))
+                    0xc04 -> -- # of branch misses
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfBranchMisses perfCtr), Nothing))
+                    0xc84 -> -- # of branch misses (H)
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfBranchMisses perfCtr), Nothing))
                     _ ->
                         (SIdle, PipeT.Ok (pc, Nothing, Nothing))
             _ -> (undefined, undefined)
