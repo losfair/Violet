@@ -4,10 +4,14 @@ import Clash.Prelude
 
 type PC = BitVector 32
 type Inst = BitVector 32
+
+type GlobalHistoryBits = 2 :: Nat
+
 data Metadata = Metadata {
     branchPredicted :: Maybe PC,
     exceptionResolved :: Bool,
     earlyRectifyApplied :: Bool,
+    globalHistory :: GlobalHistory,
     isValidInst :: Bool
 } deriving (Generic, NFDataX, Show)
 data BackendCmd = NoCmd | ApplyBranch (PC, (PC, PredictionPref))
@@ -16,17 +20,20 @@ data PreDecodeCmd = NoPreDecCmd | EarlyRectifyBranch PC
     deriving (Generic, NFDataX, Show)
 data PreDecodeAck = AckExceptionResolved | NoPreDecAck
     deriving (Generic, NFDataX, Show)
-data PredictionPref = Taken | NotTaken | NoPref deriving (Generic, NFDataX, Show)
+data PredictionPref = Taken GlobalHistory | NotTaken GlobalHistory | NoPref deriving (Generic, NFDataX, Show)
 data HistoryUpdate = HistoryUpdate {
     hFrom :: PC,
-    hTaken :: Bool
+    hTaken :: Bool,
+    hHistory :: GlobalHistory
 } deriving (Generic, NFDataX, Show)
+data GlobalHistory = GlobalHistory (BitVector GlobalHistoryBits)
+    deriving (Generic, NFDataX, Show)
 
 emptyMetadata :: Metadata
-emptyMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, isValidInst = False }
+emptyMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, isValidInst = False }
 
 validMetadata :: Metadata
-validMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, isValidInst = True }
+validMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, isValidInst = True }
 
 nopInst :: Inst
 nopInst = 0b0010011 -- addi x0, x0, 0

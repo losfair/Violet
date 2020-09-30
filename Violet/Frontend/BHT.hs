@@ -9,28 +9,29 @@ type IndexBits = 8 :: Nat
 
 data Entry = Entry {
     fromPC :: BitVector (30 - IndexBits),
-    taken :: BitVector 2
+    taken :: Vec (2^FetchT.GlobalHistoryBits) (BitVector 2)
 } deriving (Generic, NFDataX, Show)
 
-emptyEntry = Entry { fromPC = 0, taken = 0b11 }
+emptyEntry = Entry { fromPC = 0, taken = repeat 0b11 }
 
 bht :: HiddenClockResetEnable dom
     => Signal dom FetchT.BackendCmd
     -> Signal dom (Maybe FetchT.HistoryUpdate)
     -> Signal dom FetchT.PC
     -> Signal dom FetchT.PC
+    -> Signal dom FetchT.GlobalHistory
     -> Signal dom (Maybe Bool, Maybe Bool)
-bht cmd historyUpd prevPC1 prevPC2 = bundle (result1, result2)
+bht cmd historyUpd prevPC1 prevPC2 ghistory = bundle (result1, result2)
     where
         bufferIndex1 = fmap mkBufferIndex prevPC1
         delayedPrevPC1 = register 0 prevPC1
         bufferOut1 = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndex1 bufferWrite
-        result1 = fmap mkOut $ bundle (delayedPrevPC1, bufferOut1)
+        result1 = fmap mkOut $ bundle (delayedPrevPC1, ghistory, bufferOut1)
 
         bufferIndex2 = fmap mkBufferIndex prevPC2
         delayedPrevPC2 = register 0 prevPC2
         bufferOut2 = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndex2 bufferWrite
-        result2 = fmap mkOut $ bundle (delayedPrevPC2, bufferOut2)
+        result2 = fmap mkOut $ bundle (delayedPrevPC2, ghistory, bufferOut2)
 
         bufferIndexPreload = fmap mkBufferPreload $ bundle (cmd, historyUpd)
         preloadOut = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndexPreload bufferWrite
@@ -53,40 +54,41 @@ mkBufferWrite (cmd, upd, current) = case (cmd, upd) of
     (FetchT.ApplyBranch (_, (prev, pref)), _) -> r
         where
             r = case pref of
-                FetchT.Taken ->
+                FetchT.Taken (FetchT.GlobalHistory history) ->
                     if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = boundedAdd (taken current) 1 })
+                        Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = 0b11 })
-                FetchT.NotTaken ->
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b11 })
+                FetchT.NotTaken (FetchT.GlobalHistory history) ->
                     if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = boundedSub (taken current) 1 })
+                        Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = 0b00 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b00 })
                 FetchT.NoPref -> Nothing
     (_, Just upd) -> r
         where
             prev = FetchT.hFrom upd
+            FetchT.GlobalHistory history = FetchT.hHistory upd
             r = case FetchT.hTaken upd of
                 True ->
                     if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = boundedAdd (taken current) 1 })
+                        Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = 0b11 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b11 })
                 False ->
                     if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = boundedSub (taken current) 1 })
+                        Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = 0b00 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b00 })
     _ -> Nothing
 
 mkTag :: FetchT.PC -> BitVector (30 - IndexBits)
 mkTag = slice d31 (SNat :: SNat (2 + IndexBits))
 
-mkOut :: (FetchT.PC, Entry) -> Maybe Bool
-mkOut (pc, entry) =
+mkOut :: (FetchT.PC, FetchT.GlobalHistory, Entry) -> Maybe Bool
+mkOut (pc, FetchT.GlobalHistory historyIndex, entry) =
     if fromPC entry == mkTag pc then
-        case taken entry of
+        case taken entry !! historyIndex of
             0b00 -> Just False
             0b11 -> Just True
             _ -> Nothing

@@ -15,8 +15,8 @@ icache :: HiddenClockResetEnable dom
        -> Signal dom FetchT.PC
        -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
-       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem))
-icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts)
+       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem), FetchT.GlobalHistory)
+icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -24,18 +24,28 @@ icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdA
         (_, delayedFetchMd) = unbundle delayedFetchReq
         rawAccessRes = issueAccess impl alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
-        rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, bhtPrediction, accessRes)
-        (pdCmd, pdAck, resultPair) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
-            where
-                f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
 
-        issuePorts = fmap f $ bundle (pushCap, resultPair)
+        -- Global prediction.
+        globalHistory = FifoT.gatedRegister 0 pushCap (fmap f $ bundle (globalHistory, rawPredicted))
             where
-                f (pushCap, ((pc1, inst1, md1), (pc2, inst2, md2))) = case pushCap of
+                f (prev, (_, _, _, False)) = prev
+                f (prev, (cmd, _, _, True)) = (shiftL prev 1) .|. v
+                    where
+                        v = case cmd of
+                            FetchT.EarlyRectifyBranch _ -> 1
+                            _ -> 0
+        rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, bhtPrediction, accessRes)
+        (pdCmd, pdAck, resultPair, writeGlobalHistory) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
+            where
+                f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair, False) else x
+
+        issuePorts = fmap f $ bundle (pushCap, resultPair, globalHistory)
+            where
+                f (pushCap, ((pc1, inst1, md1), (pc2, inst2, md2)), globalHistory) = case pushCap of
                     FifoT.CanPush ->
                         (
-                            if FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1) else FifoT.Bubble,
-                            if FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2) else FifoT.Bubble
+                            if FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1 { FetchT.globalHistory = FetchT.GlobalHistory globalHistory }) else FifoT.Bubble,
+                            if FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2 { FetchT.globalHistory = FetchT.GlobalHistory globalHistory }) else FifoT.Bubble
                         )
                     _ -> (FifoT.Bubble, FifoT.Bubble)
         regIssuePorts = register (FifoT.Bubble, FifoT.Bubble) issuePorts
@@ -72,8 +82,8 @@ staticPredictNext :: (
                         (Maybe Bool, Maybe Bool),
                         ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
                      )
-                  -> (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)))
-staticPredictNext (btbPrediction, (bht1, bht2), ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd, ack, (out1, out2))
+                  -> (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata)), Bool)
+staticPredictNext (btbPrediction, (bht1, bht2), ((pc1, inst1, md1), (pc2, inst2, md2))) = (cmd, ack, (out1, out2), writeGlobalHistory)
     where
         pred1 = predictBr pc1 inst1 md1 bht1
         pred2 = predictBr pc2 inst2 md2 bht2
@@ -86,6 +96,8 @@ staticPredictNext (btbPrediction, (bht1, bht2), ((pc1, inst1, md1), (pc2, inst2,
             (_, _, _, True) -> (FetchT.EarlyRectifyBranch btbPrediction, (pc1, inst1, md1), (pc2, inst2, markBranchPredicted md2 btbPrediction))
             _ -> (FetchT.NoPreDecCmd, (pc1, inst1, md1), (pc2, inst2, md2))
         ack = if FetchT.exceptionResolved md1 then FetchT.AckExceptionResolved else FetchT.NoPreDecAck
+
+        writeGlobalHistory = isCondBr inst1 || isCondBr inst2
 
         -- Unconditional/backwards
         isCondBr inst = slice d6 d0 inst == 0b1100011
