@@ -5,6 +5,8 @@
 #[macro_use]
 mod console;
 
+mod quicksort;
+
 use core::panic::PanicInfo;
 
 global_asm!(include_str!("entry.asm"));
@@ -29,6 +31,9 @@ pub static mut DIV_B: u32 = 40;
 
 #[no_mangle]
 pub static mut DIV_B_S: i32 = 40;
+
+#[no_mangle]
+pub static mut QS_ARR: [u32; 1000] = [0; 1000];
 
 unsafe fn putchar(c: u8) {
     core::ptr::write_volatile(0xfe000000 as *mut u32, c as u32);
@@ -70,8 +75,122 @@ pub unsafe extern "C" fn rust_main() -> ! {
     println!("SDiv -A/-B: {}", -DIV_A_S / -DIV_B_S);
     println!("SRem -A/-B: {}", -DIV_A_S % -DIV_B_S);
 
+    populate_qs_arr();
+
+    run_profile(|| {
+        quicksort::quicksort(&mut QS_ARR);
+    });
+
+    run_profile(|| {
+        for _ in 0..1000 {
+            let x = DIV_A / DIV_B;
+            llvm_asm!("" :: "r" (x) :: "volatile");
+        }
+    });
+
+    run_profile(|| {
+        for i in 0..1000 {
+            if i % 2 == 0 {
+                llvm_asm!("mul x0, x0, x0" :::: "volatile");
+            } else {
+                llvm_asm!("nop" :::: "volatile");
+            }
+        }
+    });
+
     loop {
         llvm_asm!("" :::: "volatile");
+    }
+}
+
+unsafe fn populate_qs_arr() {
+    for (i, v) in QS_ARR.iter_mut().enumerate() {
+        *v = (i as u32) % 30;
+    }
+}
+
+fn run_profile<F: FnOnce() -> R, R>(f: F) -> R {
+    let start = rdcycle();
+    let instret_start = rdinstret();
+    let brhit_start = rd_branch_hits();
+    let brmiss_start = rd_branch_misses();
+
+    let ret = f();
+
+    let end = rdcycle();
+    let instret_end = rdinstret();
+    let brhit_end = rd_branch_hits();
+    let brmiss_end = rd_branch_misses();
+    println!("cycles: {}", end - start);
+    println!("instret: {}", instret_end - instret_start);
+    println!("branch hits/misses: {}/{}", brhit_end - brhit_start, brmiss_end - brmiss_start);
+    ret
+}
+
+fn rdcycle() -> u64 {
+    unsafe {
+        read_long_counter(|| {
+            let x: u32;
+            llvm_asm!("rdcycle $0" : "=r" (x));
+            x
+        }, || {
+            let x: u32;
+            llvm_asm!("rdcycleh $0" : "=r" (x));
+            x
+        })
+    }
+}
+
+fn rdinstret() -> u64 {
+    unsafe {
+        read_long_counter(|| {
+            let x: u32;
+            llvm_asm!("rdinstret $0" : "=r" (x));
+            x
+        }, || {
+            let x: u32;
+            llvm_asm!("rdinstreth $0" : "=r" (x));
+            x
+        })
+    }
+}
+
+fn rd_branch_hits() -> u64 {
+    unsafe {
+        read_long_counter(|| {
+            let x: u32;
+            llvm_asm!("csrr $0, 0xc03" : "=r" (x));
+            x
+        }, || {
+            let x: u32;
+            llvm_asm!("csrr $0, 0xc83" : "=r" (x));
+            x
+        })
+    }
+}
+
+fn rd_branch_misses() -> u64 {
+    unsafe {
+        read_long_counter(|| {
+            let x: u32;
+            llvm_asm!("csrr $0, 0xc04" : "=r" (x));
+            x
+        }, || {
+            let x: u32;
+            llvm_asm!("csrr $0, 0xc84" : "=r" (x));
+            x
+        })
+    }
+}
+
+fn read_long_counter(low_f: fn() -> u32, high_f: fn() -> u32) -> u64 {
+    loop {
+        let high1 = high_f();
+        let low = low_f();
+        let high2 = high_f();
+        if high1 == high2 {
+            return ((high1 as u64) << 32) | (low as u64);
+        }
     }
 }
 
