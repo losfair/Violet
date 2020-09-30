@@ -12,6 +12,7 @@ import qualified Violet.Backend.Issue
 import qualified Violet.Backend.Pipe
 import qualified Violet.Backend.Fifo
 import qualified Violet.Backend.Ctrl
+import qualified Violet.Backend.PerfCounter
 
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Fetch as FetchT
@@ -46,9 +47,11 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
         branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
         (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
-        (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
+        (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters
 
-        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
+        (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd, instRetire) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
+
+        perfCounters = Violet.Backend.PerfCounter.perfCounter instRetire
 
         -- XXX: `ctrlUnit` may send non-pipelined signals and therefore must has the highest priority.
         -- This should be fixed. 

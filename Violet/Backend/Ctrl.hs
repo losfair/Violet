@@ -8,17 +8,22 @@ import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.DCache as DCacheT
+import qualified Violet.Types.PerfCounter as PerfCounterT
 
 type HighMulState = BitVector 2
+type CsrOpcode = BitVector 3
+type CsrRs1OrUimm = BitVector 5
+type CsrIndex = BitVector 12
+
 data CtrlState = SIdle
     | SWaitForEarlyExcAck
     | SMul FetchT.PC GprT.RegIndex GprT.RegValue GprT.RegValue
     | SMulH FetchT.PC GprT.RegIndex HighMulState
     | SDiv FetchT.PC GprT.RegIndex DivType DivState
     | SDivEnd FetchT.PC GprT.RegIndex DivType DivState
-    | SCsrReadWrite FetchT.PC GprT.RegIndex CsrIndex GprT.RegValue
     | SIOMemRead FetchT.PC GprT.RegIndex DCacheT.MemAddr
     | SIOMemWrite FetchT.PC DCacheT.MemAddr DCacheT.MemData
+    | SCsrOp FetchT.PC CsrIndex CsrOpcode GprT.RegIndex CsrRs1OrUimm
     deriving (Generic, NFDataX, Eq, Show)
 type MultiplierInput = (BitVector 64, BitVector 64)
 type MultiplierOutput = BitVector 64
@@ -36,10 +41,29 @@ undefinedMultiplierInput :: MultiplierInput
 undefinedMultiplierInput = (undefined, undefined)
 
 ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
-      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput, SystemBusIn)
+      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput, SystemBusIn, PerfCounterT.PerfCounters)
       -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut))
-ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = ((state', busy', mulInput'), (commit', busy, mulInput, bus))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, perfCtr) = ((state', busy', mulInput'), (commit', busy, mulInput, bus))
     where
+        (csrNextState, csrCommit) = case state of
+            SCsrOp pc index op rd rs1OrUimm ->
+                case index of
+                    0xc00 -> -- CYCLE
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc01 -> -- TIME
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc02 -> -- INSTRET
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d31 d0 $ PerfCounterT.perfInstRet perfCtr), Nothing))
+                    0xc80 -> -- CYCLEH
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc81 -> -- TIMEH
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfCycles perfCtr), Nothing))
+                    0xc82 -> -- INSTRETH
+                        (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (slice d63 d32 $ PerfCounterT.perfInstRet perfCtr), Nothing))
+                    _ ->
+                        (SIdle, PipeT.Ok (pc, Nothing, Nothing))
+            _ -> (undefined, undefined)
+
         (state', commit', busy', mulInput') = case state of
             SIdle -> case (earlyExc, issue) of
                 (Just earlyExc, _) -> onEarlyExc earlyExc
@@ -72,13 +96,14 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
                         UnsignedDiv -> divQuotient ds
                         SignedRem aNeg bNeg -> if aNeg then -(divRemainder ds) else divRemainder ds
                         UnsignedRem -> divRemainder ds
-            SCsrReadWrite pc dst i v -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
             SIOMemRead pc dst _ -> case iIoReady (iIoBus sysIn) of
                 True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Just (PipeT.GPR dst $ iIoData (iIoBus sysIn)))), Idle, undefinedMultiplierInput)
                 False -> (state, PipeT.Bubble, Busy, undefinedMultiplierInput)
             SIOMemWrite pc _ _ -> case iIoReady (iIoBus sysIn) of
                 True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
                 False -> (state, PipeT.Bubble, Busy, undefinedMultiplierInput)
+            SCsrOp pc index op dst rs1OrUimm ->
+                (csrNextState, csrCommit, Busy, undefinedMultiplierInput)
         bus = case state of
             SIOMemRead pc dst addr -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = False, oIoAddr = addr, oIoData = undefined } }
             SIOMemWrite pc addr d -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = True, oIoAddr = addr, oIoData = d } }
@@ -86,7 +111,6 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
 
 onEarlyExc :: PipeT.EarlyException -> (CtrlState, PipeT.Commit, CtrlBusy, MultiplierInput)
 onEarlyExc e = case e of
-    PipeT.CsrReadWrite pc dst i v -> (SCsrReadWrite pc dst i v, PipeT.Bubble, Busy, undefinedMultiplierInput)
     PipeT.DecodeFailure pc -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
     PipeT.IOMemRead pc dst addr -> (SIOMemRead pc dst addr, PipeT.Bubble, Busy, undefinedMultiplierInput)
     PipeT.IOMemWrite pc addr val -> (SIOMemWrite pc addr val, PipeT.Bubble, Busy, undefinedMultiplierInput)
@@ -122,6 +146,13 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
                         (SDiv pc (GprT.decodeRd inst) (SignedRem (testBit rs1V 31) (testBit rs2V 31)) (mkDivStateS rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
                     0b11 -> -- remu
                         (SDiv pc (GprT.decodeRd inst) UnsignedRem (mkDivStateU rs1V rs2V), PipeT.Bubble, Busy, undefinedMultiplierInput)
+    0b1110011 -> -- system
+        let (rs1OrUimm, _) = GprT.decodeRs inst in
+            case slice d14 d12 inst of
+                0b000 -> -- ecall/ebreak
+                    (SIdle, PipeT.Ok (pc, Nothing, Nothing), Idle, undefinedMultiplierInput) -- TODO
+                _ -> -- csr
+                    (SCsrOp pc (slice d31 d20 inst) (slice d14 d12 inst) (GprT.decodeRd inst) rs1OrUimm, PipeT.Bubble, Busy, undefinedMultiplierInput)
     _ -> (SIdle, PipeT.Ok (pc, Nothing, Nothing), Idle, undefinedMultiplierInput)
 onIssue ((pc, inst, md), IssueT.CtrlDecodeException) _ = (SIdle, PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.DecodeFailure pc), Idle, undefinedMultiplierInput)
 
@@ -130,11 +161,12 @@ ctrl :: HiddenClockResetEnable dom
      -> Signal dom (GprT.RegValue, GprT.RegValue)
      -> Signal dom (Maybe PipeT.EarlyException)
      -> Signal dom SystemBusIn
+     -> Signal dom PerfCounterT.PerfCounters
      -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut)
-ctrl issue gprPair earlyExc sysIn = bundle $ (commit, busy, sysOut)
+ctrl issue gprPair earlyExc sysIn perfCtr = bundle $ (commit, busy, sysOut)
     where
         m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
-        (commit, busy, mulInput, sysOut) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn)
+        (commit, busy, mulInput, sysOut) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn, perfCtr)
         mulOutput = multiplier mulInput
 
 multiplier :: HiddenClockResetEnable dom

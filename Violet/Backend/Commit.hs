@@ -6,6 +6,7 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.DCache as DCacheT
 import qualified Violet.Types.Commit as CommitT
+import qualified Violet.Types.PerfCounter as PerfCounterT
 
 data CommitState = NormalOperation | EarlyExceptionPending PipeT.EarlyException | ExceptionPending
     deriving (Generic, NFDataX, Eq)
@@ -20,7 +21,7 @@ commit' :: CommitState
                 CommitState,
                 (
                     GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog,
-                    Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate
+                    Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate, PerfCounterT.InstRetire
                 )
             )
 commit' s (cp1, cp2, rp, dcWe) = (s', out)
@@ -63,15 +64,21 @@ commit' s (cp1, cp2, rp, dcWe) = (s', out)
             CommitT.writePort2 = wp2
         }
 
+        instRetire = PerfCounterT.InstRetire $ case (pc1, pc2) of
+            (Nothing, Nothing) -> 0
+            (Just _, Nothing) -> 1
+            (Nothing, Just _) -> 1
+            (Just _, Just _) -> 2
+
         -- DCache only commits on port 1 so we don't need to discard its result
         out = case hadException of
-            HadException -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Nothing, Nothing)
-            HadEarlyException e -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Just e, Nothing)
-            NoException -> (wp1, wp2, bcmd, dcWe, log, Nothing, historyUpd1)
+            HadException -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Nothing, Nothing, instRetire)
+            HadEarlyException e -> (Nothing, Nothing, FetchT.NoCmd, DCacheT.NoWrite, CommitT.emptyCommitLog, Just e, Nothing, instRetire)
+            NoException -> (wp1, wp2, bcmd, dcWe, log, Nothing, historyUpd1, instRetire)
 
 commit :: HiddenClockResetEnable dom
        => Signal dom (PipeT.Commit, PipeT.Commit, PipeT.Recovery, DCacheT.WriteEnable)
-       -> Signal dom (GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog, Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate)
+       -> Signal dom (GprT.WritePort, GprT.WritePort, FetchT.BackendCmd, DCacheT.WriteEnable, CommitT.CommitLog, Maybe PipeT.EarlyException, Maybe FetchT.HistoryUpdate, PerfCounterT.InstRetire)
 commit = mealy commit' NormalOperation
 
 transformCommit :: PipeT.Commit -> (Maybe FetchT.PC, GprT.WritePort, FetchT.BackendCmd, Maybe PipeT.EarlyException, Resolution, Maybe FetchT.HistoryUpdate)
