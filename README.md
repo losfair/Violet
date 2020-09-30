@@ -6,9 +6,9 @@ Dual-issue superscalar RISC-V processor written in [Clash](https://github.com/cl
 
 - RV32IM
 - 8-stage in-order superscalar pipeline
-- BTB + BHT for branch prediction
+- BTB + GShare branch prediction
 - 110 MHz on Artix-7
-- 2.95 CoreMark/MHz
+- 3.08 CoreMark/MHz
 
 ## Architecture
 
