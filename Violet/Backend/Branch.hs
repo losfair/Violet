@@ -35,13 +35,13 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
                         PipeT.Exc (pc, PipeT.BranchLink dst rd (pc + 4))
             _ -> -- 0b00: bcond
                 if not condSatisfied && FetchT.branchPredicted meta == Nothing then
-                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = False })
+                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = False, FetchT.hHistory = FetchT.globalHistory meta })
                 else if condSatisfied && FetchT.branchPredicted meta == Just (pc + FetchT.decodeRelBrOffset inst) then
-                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = True })
+                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = True, FetchT.hHistory = FetchT.globalHistory meta })
                 else if not condSatisfied then
-                    PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4))
+                    PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4) (FetchT.globalHistory meta))
                 else -- condSatisfied
-                    PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst))
+                    PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst) (FetchT.globalHistory meta))
 
 branch :: HiddenClockResetEnable dom
        => Signal dom (Maybe IssueT.IssuePort)

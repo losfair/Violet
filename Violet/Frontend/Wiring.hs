@@ -22,6 +22,6 @@ wiring icacheImpl beCmd pushCap historyUpd = issuePorts
         pcOut = Violet.Frontend.PC.pc beCmd (bundle (pdCmd, pdAck)) pushCap
         (pcVal, _) = unbundle pcOut
         btbPrediction = Violet.Frontend.BTB.btb beCmd pcVal
-        bhtPrediction = Violet.Frontend.BHT.bht beCmd historyUpd pcVal (fmap (\x -> setBit x 2) pcVal)
+        bhtPrediction = Violet.Frontend.BHT.bht beCmd historyUpd pcVal (fmap (\x -> setBit x 2) pcVal) ghistory
 
-        (pdCmd, pdAck, issuePorts) = unbundle $ Violet.Frontend.ICache.icache icacheImpl pcOut btbPrediction bhtPrediction pushCap
+        (pdCmd, pdAck, issuePorts, ghistory) = unbundle $ Violet.Frontend.ICache.icache icacheImpl pcOut btbPrediction bhtPrediction pushCap

@@ -15,8 +15,8 @@ icache :: HiddenClockResetEnable dom
        -> Signal dom FetchT.PC
        -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
-       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem))
-icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts)
+       -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem), FetchT.GlobalHistory)
+icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -24,18 +24,27 @@ icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdA
         (_, delayedFetchMd) = unbundle delayedFetchReq
         rawAccessRes = issueAccess impl alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
+
+        -- Global prediction.
+        globalHistory = FifoT.gatedRegister 0 pushCap (fmap f $ bundle (globalHistory, rawPredicted))
+            where
+                f (prev, (cmd, _, _)) = (shiftL prev 1) .|. v
+                    where
+                        v = case cmd of
+                            FetchT.EarlyRectifyBranch _ -> 1
+                            _ -> 0
         rawPredicted = fmap staticPredictNext $ bundle (btbPrediction, bhtPrediction, accessRes)
         (pdCmd, pdAck, resultPair) = unbundle $ fmap f $ bundle (rawPredicted, rectifyApply)
             where
                 f (x, rectifyApply) = if rectifyApply then (FetchT.NoPreDecCmd, FetchT.NoPreDecAck, emptyResultPair) else x
 
-        issuePorts = fmap f $ bundle (pushCap, resultPair)
+        issuePorts = fmap f $ bundle (pushCap, resultPair, globalHistory)
             where
-                f (pushCap, ((pc1, inst1, md1), (pc2, inst2, md2))) = case pushCap of
+                f (pushCap, ((pc1, inst1, md1), (pc2, inst2, md2)), globalHistory) = case pushCap of
                     FifoT.CanPush ->
                         (
-                            if FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1) else FifoT.Bubble,
-                            if FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2) else FifoT.Bubble
+                            if FetchT.isValidInst md1 then FifoT.Item (pc1, inst1, md1 { FetchT.globalHistory = FetchT.GlobalHistory globalHistory }) else FifoT.Bubble,
+                            if FetchT.isValidInst md2 then FifoT.Item (pc2, inst2, md2 { FetchT.globalHistory = FetchT.GlobalHistory globalHistory }) else FifoT.Bubble
                         )
                     _ -> (FifoT.Bubble, FifoT.Bubble)
         regIssuePorts = register (FifoT.Bubble, FifoT.Bubble) issuePorts

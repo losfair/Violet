@@ -94,6 +94,6 @@ transformCommit (PipeT.Exc (pc, e)) = case e of
     PipeT.EarlyExcResolution (nextPC, Just (PipeT.GPR i v)) -> (Just pc, Just (i, v), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved, Nothing)
     PipeT.EarlyExcResolution (nextPC, Nothing) -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcResolved, Nothing)
     PipeT.BranchLink nextPC idx linkPC -> (Just pc, Just (idx, linkPC), FetchT.ApplyBranch (nextPC, (pc, FetchT.NoPref)), Nothing, ExcNotResolved, Nothing)
-    PipeT.BranchFalsePos nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken)), Nothing, ExcNotResolved, Nothing)
-    PipeT.BranchFalseNeg nextPC -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken)), Nothing, ExcNotResolved, Nothing)
+    PipeT.BranchFalsePos nextPC history -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.NotTaken history)), Nothing, ExcNotResolved, Nothing)
+    PipeT.BranchFalseNeg nextPC history -> (Just pc, Nothing, FetchT.ApplyBranch (nextPC, (pc, FetchT.Taken history)), Nothing, ExcNotResolved, Nothing)
     PipeT.EarlyExc e -> (Nothing, Nothing, FetchT.NoCmd, Just e, ExcNotResolved, Nothing)

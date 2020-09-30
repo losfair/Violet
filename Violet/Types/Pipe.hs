@@ -10,8 +10,8 @@ type MemData = BitVector 32
 
 data Exception = EarlyExc EarlyException
     | EarlyExcResolution (FetchT.PC, Maybe ArchRegister)
-    | BranchFalsePos FetchT.PC
-    | BranchFalseNeg FetchT.PC
+    | BranchFalsePos FetchT.PC FetchT.GlobalHistory
+    | BranchFalseNeg FetchT.PC FetchT.GlobalHistory
     | BranchLink FetchT.PC GprT.RegIndex FetchT.PC
     deriving (Generic, NFDataX)
 data ArchRegister = GPR GprT.RegIndex GprT.RegValue
