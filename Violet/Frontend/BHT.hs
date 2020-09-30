@@ -5,7 +5,7 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
 
-type IndexBits = 8 :: Nat
+type IndexBits = 11 :: Nat
 
 data Entry = Entry {
     fromPC :: BitVector (30 - IndexBits),
@@ -25,16 +25,16 @@ bht cmd historyUpd prevPC1 prevPC2 ghistory = bundle (result1, result2)
     where
         bufferIndex1 = fmap mkBufferIndex prevPC1
         delayedPrevPC1 = register 0 prevPC1
-        bufferOut1 = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndex1 bufferWrite
+        bufferOut1 = readNew (blockRam1 NoClearOnReset (SNat :: SNat (2^IndexBits)) emptyEntry) bufferIndex1 bufferWrite
         result1 = fmap mkOut $ bundle (delayedPrevPC1, ghistory, bufferOut1)
 
         bufferIndex2 = fmap mkBufferIndex prevPC2
         delayedPrevPC2 = register 0 prevPC2
-        bufferOut2 = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndex2 bufferWrite
+        bufferOut2 = readNew (blockRam1 NoClearOnReset (SNat :: SNat (2^IndexBits)) emptyEntry) bufferIndex2 bufferWrite
         result2 = fmap mkOut $ bundle (delayedPrevPC2, ghistory, bufferOut2)
 
         bufferIndexPreload = fmap mkBufferPreload $ bundle (cmd, historyUpd)
-        preloadOut = readNew (blockRamPow2 (repeat emptyEntry)) bufferIndexPreload bufferWrite
+        preloadOut = readNew (blockRam1 NoClearOnReset (SNat :: SNat (2^IndexBits)) emptyEntry) bufferIndexPreload bufferWrite
 
         delayedCmd = register FetchT.NoCmd cmd
         delayedHistoryUpd = register Nothing historyUpd
@@ -58,12 +58,12 @@ mkBufferWrite (cmd, upd, current) = case (cmd, upd) of
                     if fromPC current == mkTag prev then
                         Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b11 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b10 })
                 FetchT.NotTaken (FetchT.GlobalHistory history) ->
                     if fromPC current == mkTag prev then
                         Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b00 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b01 })
                 FetchT.NoPref -> Nothing
     (_, Just upd) -> r
         where
@@ -74,12 +74,12 @@ mkBufferWrite (cmd, upd, current) = case (cmd, upd) of
                     if fromPC current == mkTag prev then
                         Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b11 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b10 })
                 False ->
                     if fromPC current == mkTag prev then
                         Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
                     else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b00 })
+                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b01 })
     _ -> Nothing
 
 mkTag :: FetchT.PC -> BitVector (30 - IndexBits)

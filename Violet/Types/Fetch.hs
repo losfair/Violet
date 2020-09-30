@@ -5,7 +5,7 @@ import Clash.Prelude
 type PC = BitVector 32
 type Inst = BitVector 32
 
-type GlobalHistoryBits = 2 :: Nat
+type GlobalHistoryBits = 5 :: Nat
 
 data Metadata = Metadata {
     branchPredicted :: Maybe PC,
