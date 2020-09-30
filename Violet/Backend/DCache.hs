@@ -32,13 +32,16 @@ dcache :: HiddenClockResetEnable dom
        => DCacheImpl a
        => a
        -> Signal dom (Maybe IssueT.IssuePort)
+       -> Signal dom (Maybe IssueT.IssuePort)
+       -> Signal dom (GprT.RegValue, GprT.RegValue)
        -> Signal dom (GprT.RegValue, GprT.RegValue)
        -> Signal dom WriteEnable
-       -> (Signal dom PipeT.Commit, Signal dom WriteEnable)
-dcache impl issue regs weCommit = (commit, weReq)
+       -> (Signal dom PipeT.Commit, Signal dom PipeT.Commit, Signal dom WriteEnable)
+dcache impl issue1 issue2 regs1 regs2 weCommit = (commit1, commit2, weReq)
     where
-        implIssue = register Nothing (fmap (\(x, y) -> maddr' x y) $ bundle (issue, regs))
-        (commit, weReq) = issueAccess impl implIssue weCommit
+        implIssue1 = register Nothing (fmap (\(x, y) -> maddr' x y) $ bundle (issue1, regs1))
+        implIssue2 = register Nothing (fmap (\(x, y) -> maddr' x y) $ bundle (issue2, regs2))
+        (commit1, commit2, weReq) = issueAccess impl implIssue1 implIssue2 weCommit
 
 decodeSel :: (MemAddr, FetchT.Inst) -> Selector
 decodeSel (addr, inst) = sel

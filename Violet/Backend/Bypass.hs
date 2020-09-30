@@ -72,7 +72,8 @@ maskActivation mask port1 port2 = FunctionUnitActivation {
     fuInt2 = if amInt2 mask then Just port2 else Nothing,
     fuBranch1 = if amBranch1 mask then Just port1 else Nothing,
     fuBranch2 = if amBranch2 mask then Just port2 else Nothing,
-    fuMem = if amMem mask then Just port1 else Nothing,
+    fuMem1 = if amMem1 mask then Just port1 else Nothing,
+    fuMem2 = if amMem2 mask then Just port2 else Nothing,
     fuCtrl = case amCtrl mask of
         Just ctrlIssue -> Just (port1, ctrlIssue)
         Nothing -> Nothing

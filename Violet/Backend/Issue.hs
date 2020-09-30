@@ -14,7 +14,8 @@ import qualified Debug.Trace
 import qualified Prelude
 
 data IssueState = IssueState {
-    loadActivated :: Vec 2 (Maybe GprT.RegIndex),
+    loadActivated1 :: Vec 2 (Maybe GprT.RegIndex),
+    loadActivated2 :: Vec 2 (Maybe GprT.RegIndex),
     ctrlFirstCycle :: Bool
 } deriving (Generic, NFDataX)
 
@@ -70,7 +71,7 @@ decode inst =
 dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
 dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
     where
-        memConflict = actLoad act2 || actStore act2 -- port 1 only
+        memConflict = actStore act2 -- store on port 1 only
         ctrlConflict = actCtrl act1 || actCtrl act2
         exceptionConflict = actException act1 || actException act2
         structuralHazard = memConflict || ctrlConflict || exceptionConflict
@@ -140,8 +141,10 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         pipelineBlocked = loadBlocked || ctrlBlocked
 
         -- Don't re-activate if we didn't issue
-        loadDst = if not pipelineBlocked then itemLoadDstReg item1 act1 else Nothing
-        loadActivated' = fst $ shiftInAtN (loadActivated state) (loadDst :> Nil)
+        loadDst1 = if not pipelineBlocked && not disableFirstPort then itemLoadDstReg item1 act1 else Nothing
+        loadDst2 = if not pipelineBlocked && enableSecondPort then itemLoadDstReg item2 act2 else Nothing
+        loadActivated1' = fst $ shiftInAtN (loadActivated1 state) (loadDst1 :> Nil)
+        loadActivated2' = fst $ shiftInAtN (loadActivated2 state) (loadDst2 :> Nil)
         ctrlFirstCycle' = actCtrl act1 && not pipelineBlocked
 
         amNormal = ActivationMask {
@@ -149,7 +152,8 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
             amInt2 = actInt act2 && enableSecondPort,
             amBranch1 = actBranch act1 && not disableFirstPort,
             amBranch2 = actBranch act2 && enableSecondPort,
-            amMem = (actLoad act1 || actStore act1) && not disableFirstPort,
+            amMem1 = (actLoad act1 || actStore act1) && not disableFirstPort,
+            amMem2 = actLoad act2 && enableSecondPort,
             amCtrl =
                 if actException act1 && not disableFirstPort then Just CtrlDecodeException
                 else if actCtrl act1 && not disableFirstPort then Just CtrlNormal
@@ -162,25 +166,27 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         recovery' = if isExceptionResolved then PipeT.IsRecovery else PipeT.NotRecovery
         port1' = genIssuePort item1
         port2' = genIssuePort item2
-        state' = IssueState { loadActivated = loadActivated', ctrlFirstCycle = ctrlFirstCycle' }
+        state' = IssueState { loadActivated1 = loadActivated1', loadActivated2 = loadActivated2', ctrlFirstCycle = ctrlFirstCycle' }
 
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated = repeat Nothing, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated1 = repeat Nothing, loadActivated2 = repeat Nothing, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
 hasOngoingLoad :: IssueState -> Bool
-hasOngoingLoad state = case findIndex (\x -> x /= Nothing) (loadActivated state) of
-    Just _ -> True
-    Nothing -> False
+hasOngoingLoad state = f (loadActivated1 state) || f (loadActivated2 state)
+    where
+        f actList = case findIndex (\x -> x /= Nothing) actList of
+            Just _ -> True
+            Nothing -> False
 
 hasLoadUse :: IssueState -> FifoT.FifoItem -> RegLayout -> Bool
 hasLoadUse state item layout = case item of
     FifoT.Item (_, i, _) ->
-        let
-            (rs1, rs2) = GprT.decodeRs i
-            in
-                case findIndex (\x -> (hasRs1 layout && x == Just rs1) || (hasRs2 layout && x == Just rs2)) (loadActivated state) of
+        f (loadActivated1 state) || f (loadActivated2 state)
+            where
+                (rs1, rs2) = GprT.decodeRs i
+                f actList = case findIndex (\x -> (hasRs1 layout && x == Just rs1) || (hasRs2 layout && x == Just rs2)) actList of
                     Just _ -> True
                     Nothing -> False
     _ -> False
@@ -214,7 +220,8 @@ emptyActivationMask = ActivationMask {
     amInt2 = False,
     amBranch1 = False,
     amBranch2 = False,
-    amMem = False,
+    amMem1 = False,
+    amMem2 = False,
     amCtrl = Nothing
 }
 

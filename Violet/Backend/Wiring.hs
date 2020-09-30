@@ -46,7 +46,7 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         intAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
         branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
         branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
-        (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
+        (dcacheUnit1, dcacheUnit2, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem1 fuActivation) (fmap IssueT.fuMem2 fuActivation) gprPort1 gprPort2 dcWeCommit
         (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters
 
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd, instRetire, branchStat) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
@@ -58,12 +58,12 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         commitStagesIn1 =
             selectCommit (selectCommit intAlu1 branchUnit1) ctrlUnit
             :> commitPipe1 !! 0
-            :> selectCommit dcacheUnit (commitPipe1 !! 1)
+            :> selectCommit dcacheUnit1 (commitPipe1 !! 1)
             :> Nil
         commitStagesIn2 =
             selectCommit intAlu2 branchUnit2
             :> commitPipe2 !! 0
-            :> commitPipe2 !! 1
+            :> selectCommit dcacheUnit2 (commitPipe2 !! 1)
             :> Nil
         recoveryStagesIn =
             recovery

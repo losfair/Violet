@@ -19,26 +19,35 @@ data StaticDM = StaticDM
     deriving (Generic, NFDataX)
 
 instance DCacheImpl StaticDM where
-    issueAccess _ req weCommit = (commitPort, weReq)
+    issueAccess _ req1 req2 weCommit = (commitPort1, commitPort2, weReq)
         where
             -- stage 1
-            readPort = fmap transformReadPort req
-            writePort = fmap transformWritePort req
+            readPort1 = fmap transformReadPort req1
+            readPort2 = fmap transformReadPort req2
+            writePort = fmap transformWritePort req1
 
             -- stage 2
-            rawReadResult = mkRam readPort writeCommitPort
-            readMini = register Nothing (fmap transformReadMini req)
-            delayedPC = register 0 (fmap transformPC req)
-            delayedRd = register 0 (fmap transformRd req)
-            delayedReadPort = register 0 readPort
-            forwardedReadResult = writeForward delayedReadPort rawReadResult writePortFinal
-            readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
-            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1, delayedReadPort)
+            rawReadResult1 = mkRam readPort1 writeCommitPort
+            rawReadResult2 = mkRam readPort2 writeCommitPort
+            readMini1 = register Nothing (fmap transformReadMini req1)
+            readMini2 = register Nothing (fmap transformReadMini req2)
+            delayedPC1 = register 0 (fmap transformPC req1)
+            delayedPC2 = register 0 (fmap transformPC req2)
+            delayedRd1 = register 0 (fmap transformRd req1)
+            delayedRd2 = register 0 (fmap transformRd req2)
+            delayedReadPort1 = register 0 readPort1
+            delayedReadPort2 = register 0 readPort2
+            forwardedReadResult1 = writeForward delayedReadPort1 rawReadResult1 writePortFinal
+            forwardedReadResult2 = writeForward delayedReadPort2 rawReadResult2 writePortFinal
+            readResult1 = fmap transformReadResult $ bundle (forwardedReadResult1, readMini1)
+            readResult2 = fmap transformReadResult $ bundle (forwardedReadResult2, readMini2)
+            commitPort1 = fmap transformCommitPort $ bundle (delayedPC1, delayedRd1, readResult1, writePortD1, delayedReadPort1)
+            commitPort2 = fmap transformCommitPort $ bundle (delayedPC2, delayedRd2, readResult2, pure Nothing, delayedReadPort2)
             writePortD1 = register Nothing writePort
 
             -- Commit stage doesn't handle DCache exception and write disable in the same cycle.
             -- So we need to handle it here.
-            writePortD1Gated = fmap f $ bundle (writePortD1, commitPort)
+            writePortD1Gated = fmap f $ bundle (writePortD1, commitPort1)
                 where
                     f (wp, cp) = case cp of
                         PipeT.Exc _ -> Nothing

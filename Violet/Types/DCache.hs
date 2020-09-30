@@ -23,5 +23,6 @@ class DCacheImpl a where
     issueAccess :: HiddenClockResetEnable dom
                 => a
                 -> Signal dom (Maybe (FetchT.PC, MemAddr, Access))
+                -> Signal dom (Maybe (FetchT.PC, MemAddr, Access))
                 -> Signal dom WriteEnable
-                -> (Signal dom PipeT.Commit, Signal dom WriteEnable)
+                -> (Signal dom PipeT.Commit, Signal dom PipeT.Commit, Signal dom WriteEnable)

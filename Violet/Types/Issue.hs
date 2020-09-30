@@ -8,7 +8,8 @@ data FunctionUnitActivation = FunctionUnitActivation {
     fuInt2 :: Maybe IssuePort,
     fuBranch1 :: Maybe IssuePort,
     fuBranch2 :: Maybe IssuePort,
-    fuMem :: Maybe IssuePort,
+    fuMem1 :: Maybe IssuePort,
+    fuMem2 :: Maybe IssuePort,
     fuCtrl :: Maybe (IssuePort, ControlIssue)
 } deriving (Generic, NFDataX)
 
@@ -22,6 +23,7 @@ data ActivationMask = ActivationMask {
     amInt2 :: Bool,
     amBranch1 :: Bool,
     amBranch2 :: Bool,
-    amMem :: Bool,
+    amMem1 :: Bool,
+    amMem2 :: Bool,
     amCtrl :: Maybe ControlIssue
 } deriving (Generic, NFDataX)
