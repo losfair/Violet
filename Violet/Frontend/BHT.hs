@@ -5,14 +5,13 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
 
-type IndexBits = 11 :: Nat
+type IndexBits = 8 :: Nat
 
 data Entry = Entry {
-    fromPC :: BitVector (30 - IndexBits),
     taken :: Vec (2^FetchT.GlobalHistoryBits) (BitVector 2)
 } deriving (Generic, NFDataX, Show)
 
-emptyEntry = Entry { fromPC = 0, taken = repeat 0b11 }
+emptyEntry = Entry { taken = repeat 0b10 }
 
 bht :: HiddenClockResetEnable dom
     => Signal dom FetchT.BackendCmd
@@ -55,15 +54,9 @@ mkBufferWrite (cmd, upd, current) = case (cmd, upd) of
         where
             r = case pref of
                 FetchT.Taken (FetchT.GlobalHistory history) ->
-                    if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
-                    else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b10 })
+                    Just (mkBufferIndex prev, current { taken = replace (mkGshareIndex prev history) (boundedAdd (taken current !! (mkGshareIndex prev history)) 1) (taken current) })
                 FetchT.NotTaken (FetchT.GlobalHistory history) ->
-                    if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
-                    else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b01 })
+                    Just (mkBufferIndex prev, current { taken = replace (mkGshareIndex prev history) (boundedSub (taken current !! (mkGshareIndex prev history)) 1) (taken current) })
                 FetchT.NoPref -> Nothing
     (_, Just upd) -> r
         where
@@ -71,25 +64,17 @@ mkBufferWrite (cmd, upd, current) = case (cmd, upd) of
             FetchT.GlobalHistory history = FetchT.hHistory upd
             r = case FetchT.hTaken upd of
                 True ->
-                    if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = replace history (boundedAdd (taken current !! history) 1) (taken current) })
-                    else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b10 })
+                    Just (mkBufferIndex prev, current { taken = replace (mkGshareIndex prev history) (boundedAdd (taken current !! (mkGshareIndex prev history)) 1) (taken current) })
                 False ->
-                    if fromPC current == mkTag prev then
-                        Just (mkBufferIndex prev, current { taken = replace history (boundedSub (taken current !! history) 1) (taken current) })
-                    else
-                        Just (mkBufferIndex prev, Entry { fromPC = mkTag prev, taken = repeat 0b01 })
+                    Just (mkBufferIndex prev, current { taken = replace (mkGshareIndex prev history) (boundedSub (taken current !! (mkGshareIndex prev history)) 1) (taken current) })
     _ -> Nothing
-
-mkTag :: FetchT.PC -> BitVector (30 - IndexBits)
-mkTag = slice d31 (SNat :: SNat (2 + IndexBits))
 
 mkOut :: (FetchT.PC, FetchT.GlobalHistory, Entry) -> Maybe Bool
 mkOut (pc, FetchT.GlobalHistory historyIndex, entry) =
-    if fromPC entry == mkTag pc then
-        case taken entry !! historyIndex of
-            0b00 -> Just False
-            0b11 -> Just True
-            _ -> Nothing
-    else Nothing
+    case taken entry !! (mkGshareIndex pc historyIndex) of
+        0b00 -> Just False
+        0b11 -> Just True
+        _ -> Nothing
+
+mkGshareIndex :: FetchT.PC -> BitVector FetchT.GlobalHistoryBits -> BitVector FetchT.GlobalHistoryBits
+mkGshareIndex pc h = xor (slice (SNat :: SNat (1 + FetchT.GlobalHistoryBits)) d2 pc) h
