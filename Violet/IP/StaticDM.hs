@@ -8,6 +8,7 @@ import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Pipe as PipeT
+import qualified Violet.Types.Ctrl as CtrlT
 
 type RamBits = 14 :: Nat
 type ReadPort = MemAddr
@@ -19,7 +20,7 @@ data StaticDM = StaticDM
     deriving (Generic, NFDataX)
 
 instance DCacheImpl StaticDM where
-    issueAccess _ req weCommit = (commitPort, weReq)
+    issueAccess _ req weCommit _  _ = (commitPort, weReq, pure RefillNotCompleted, pure CtrlT.idleDBusOut)
         where
             -- stage 1
             readPort = fmap transformReadPort req

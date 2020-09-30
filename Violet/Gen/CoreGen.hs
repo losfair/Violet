@@ -5,6 +5,7 @@ import qualified Violet.Backend.Wiring
 import qualified Violet.Frontend.Wiring
 import qualified Violet.IP.StaticDM
 import qualified Violet.IP.StaticIM
+import qualified Violet.IP.DMultiWay
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Commit as CommitT

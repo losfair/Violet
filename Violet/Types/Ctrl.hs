@@ -8,11 +8,13 @@ data CtrlBusy = Busy | Idle
 type CsrIndex = BitVector 8
 
 data SystemBusOut = SystemBusOut {
-    oIoBus :: IOBusOut
+    oIoBus :: IOBusOut,
+    oDBus :: DBusOut
 } deriving (Generic, NFDataX)
 
 data SystemBusIn = SystemBusIn {
-    iIoBus :: IOBusIn
+    iIoBus :: IOBusIn,
+    iDBus :: DBusIn
 } deriving (Generic, NFDataX)
 
 data IOBusOut = IOBusOut {
@@ -27,8 +29,21 @@ data IOBusIn = IOBusIn {
     iIoData :: BitVector 32
 } deriving (Generic, NFDataX)
 
+data DBusOut = DBusOut {
+    oDBusValid :: Bool,
+    oDBusWrite :: Bool,
+    oDBusAddr :: BitVector 32,
+    oDBusData :: BitVector 32
+} deriving (Generic, NFDataX)
+
+data DBusIn = DBUsIn {
+    iDBusReady :: Bool,
+    iDBusData :: BitVector 32
+} deriving (Generic, NFDataX)
+
 idleSystemBusOut = SystemBusOut {
-    oIoBus = idleIOBusOut
+    oIoBus = idleIOBusOut,
+    oDBus = idleDBusOut
 }
 
 idleIOBusOut = IOBusOut {
@@ -36,4 +51,11 @@ idleIOBusOut = IOBusOut {
     oIoWrite = undefined,
     oIoAddr = undefined,
     oIoData = undefined
+}
+
+idleDBusOut = DBusOut {
+    oDBusValid = False,
+    oDBusWrite = undefined,
+    oDBusAddr = undefined,
+    oDBusData = undefined
 }

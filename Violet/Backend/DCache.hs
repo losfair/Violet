@@ -7,6 +7,7 @@ import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Pipe as PipeT
+import qualified Violet.Types.Ctrl as CtrlT
 
 maddr' :: Maybe IssueT.IssuePort
       -> (GprT.RegValue, GprT.RegValue)
@@ -34,11 +35,13 @@ dcache :: HiddenClockResetEnable dom
        -> Signal dom (Maybe IssueT.IssuePort)
        -> Signal dom (GprT.RegValue, GprT.RegValue)
        -> Signal dom WriteEnable
-       -> (Signal dom PipeT.Commit, Signal dom WriteEnable)
-dcache impl issue regs weCommit = (commit, weReq)
+       -> Signal dom (Maybe Refill)
+       -> Signal dom CtrlT.DBusIn
+       -> (Signal dom PipeT.Commit, Signal dom WriteEnable, Signal dom RefillCompletion, Signal dom CtrlT.DBusOut)
+dcache impl issue regs weCommit refill dbusIn = (commit, weReq, refillCompletion, dbusOut)
     where
         implIssue = register Nothing (fmap (\(x, y) -> maddr' x y) $ bundle (issue, regs))
-        (commit, weReq) = issueAccess impl implIssue weCommit
+        (commit, weReq, refillCompletion, dbusOut) = issueAccess impl implIssue weCommit refill dbusIn
 
 decodeSel :: (MemAddr, FetchT.Inst) -> Selector
 decodeSel (addr, inst) = sel

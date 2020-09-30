@@ -20,6 +20,7 @@ data EarlyException = DecodeFailure FetchT.PC
     | CsrReadWrite FetchT.PC GprT.RegIndex CtrlT.CsrIndex GprT.RegValue
     | IOMemRead FetchT.PC GprT.RegIndex MemAddr
     | IOMemWrite FetchT.PC MemAddr MemData
+    | DCacheRefill FetchT.PC MemAddr
     deriving (Generic, NFDataX, Eq)
 data Commit = Ok (FetchT.PC, Maybe ArchRegister, Maybe FetchT.HistoryUpdate) | Exc (FetchT.PC, Exception) | Bubble
     deriving (Generic, NFDataX)

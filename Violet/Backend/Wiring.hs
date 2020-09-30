@@ -33,6 +33,12 @@ wiring :: HiddenClockResetEnable dom
        -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut, Maybe FetchT.HistoryUpdate)
 wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut, historyUpd)
     where
+        sysOut = fmap f $ bundle (ioOut, dbusOut)
+            where
+                f (ioOut, dbusOut) = CtrlT.SystemBusOut { CtrlT.oIoBus = ioOut, CtrlT.oDBus = dbusOut }
+        ioIn = fmap CtrlT.iIoBus sysIn
+        dbusIn = fmap CtrlT.iDBus sysIn
+
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Violet.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
         (bypassInput, recovery, immRecovery, fifoPopReq) = unbundle $ Violet.Backend.Issue.issue $ bundle (issueInput1, issueInput2, ctrlBusy)
@@ -45,8 +51,8 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         intAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
         branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
         branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
-        (dcacheUnit, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit
-        (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn
+        (dcacheUnit, dcWeReq, dcRefillCompletion, dbusOut) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem fuActivation) gprPort1 dcWeCommit dcRefill dbusIn
+        (ctrlUnit, ctrlBusy, ioOut, dcRefill) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc ioIn dcRefillCompletion
 
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
 

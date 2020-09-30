@@ -19,6 +19,7 @@ data CtrlState = SIdle
     | SCsrReadWrite FetchT.PC GprT.RegIndex CsrIndex GprT.RegValue
     | SIOMemRead FetchT.PC GprT.RegIndex DCacheT.MemAddr
     | SIOMemWrite FetchT.PC DCacheT.MemAddr DCacheT.MemData
+    | SDCacheRefill FetchT.PC DCacheT.MemAddr Bool
     deriving (Generic, NFDataX, Eq, Show)
 type MultiplierInput = (BitVector 64, BitVector 64)
 type MultiplierOutput = BitVector 64
@@ -36,9 +37,9 @@ undefinedMultiplierInput :: MultiplierInput
 undefinedMultiplierInput = (undefined, undefined)
 
 ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
-      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput, SystemBusIn)
-      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut))
-ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = ((state', busy', mulInput'), (commit', busy, mulInput, bus))
+      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput, IOBusIn, DCacheT.RefillCompletion)
+      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, IOBusOut, Maybe DCacheT.Refill))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, ioIn, dcRefillComp) = ((state', busy', mulInput'), (commit', busy, mulInput, bus, refill))
     where
         (state', commit', busy', mulInput') = case state of
             SIdle -> case (earlyExc, issue) of
@@ -73,16 +74,23 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn) = (
                         SignedRem aNeg bNeg -> if aNeg then -(divRemainder ds) else divRemainder ds
                         UnsignedRem -> divRemainder ds
             SCsrReadWrite pc dst i v -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
-            SIOMemRead pc dst _ -> case iIoReady (iIoBus sysIn) of
-                True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Just (PipeT.GPR dst $ iIoData (iIoBus sysIn)))), Idle, undefinedMultiplierInput)
+            SIOMemRead pc dst _ -> case iIoReady ioIn of
+                True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Just (PipeT.GPR dst $ iIoData ioIn))), Idle, undefinedMultiplierInput)
                 False -> (state, PipeT.Bubble, Busy, undefinedMultiplierInput)
-            SIOMemWrite pc _ _ -> case iIoReady (iIoBus sysIn) of
+            SIOMemWrite pc _ _ -> case iIoReady ioIn of
                 True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
                 False -> (state, PipeT.Bubble, Busy, undefinedMultiplierInput)
+            SDCacheRefill pc addr init -> case dcRefillComp of
+                DCacheT.RefillCompleted -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc, Nothing)), Idle, undefinedMultiplierInput)
+                DCacheT.RefillNotCompleted -> (SDCacheRefill pc addr False, PipeT.Bubble, Busy, undefinedMultiplierInput)
+                DCacheT.RefillError e -> onEarlyExc e
         bus = case state of
-            SIOMemRead pc dst addr -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = False, oIoAddr = addr, oIoData = undefined } }
-            SIOMemWrite pc addr d -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = True, oIoAddr = addr, oIoData = d } }
-            _ -> idleSystemBusOut
+            SIOMemRead pc dst addr -> IOBusOut { oIoValid = True, oIoWrite = False, oIoAddr = addr, oIoData = undefined }
+            SIOMemWrite pc addr d -> IOBusOut { oIoValid = True, oIoWrite = True, oIoAddr = addr, oIoData = d }
+            _ -> idleIOBusOut
+        refill = case state of
+            SDCacheRefill _ addr True -> Just $ DCacheT.Refill addr
+            _ -> Nothing
 
 onEarlyExc :: PipeT.EarlyException -> (CtrlState, PipeT.Commit, CtrlBusy, MultiplierInput)
 onEarlyExc e = case e of
@@ -90,6 +98,7 @@ onEarlyExc e = case e of
     PipeT.DecodeFailure pc -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc + 4, Nothing)), Idle, undefinedMultiplierInput)
     PipeT.IOMemRead pc dst addr -> (SIOMemRead pc dst addr, PipeT.Bubble, Busy, undefinedMultiplierInput)
     PipeT.IOMemWrite pc addr val -> (SIOMemWrite pc addr val, PipeT.Bubble, Busy, undefinedMultiplierInput)
+    PipeT.DCacheRefill pc addr -> (SDCacheRefill pc addr True, PipeT.Bubble, Busy, undefinedMultiplierInput)
 
 onIssue :: (IssueT.IssuePort, IssueT.ControlIssue)
         -> (GprT.RegValue, GprT.RegValue)
@@ -129,12 +138,13 @@ ctrl :: HiddenClockResetEnable dom
      => Signal dom (Maybe (IssueT.IssuePort, IssueT.ControlIssue))
      -> Signal dom (GprT.RegValue, GprT.RegValue)
      -> Signal dom (Maybe PipeT.EarlyException)
-     -> Signal dom SystemBusIn
-     -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut)
-ctrl issue gprPair earlyExc sysIn = bundle $ (commit, busy, sysOut)
+     -> Signal dom IOBusIn
+     -> Signal dom DCacheT.RefillCompletion
+     -> Signal dom (PipeT.Commit, CtrlBusy, IOBusOut, Maybe DCacheT.Refill)
+ctrl issue gprPair earlyExc ioIn refillComp = bundle $ (commit, busy, ioOut, refill)
     where
         m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
-        (commit, busy, mulInput, sysOut) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn)
+        (commit, busy, mulInput, ioOut, refill) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, ioIn, refillComp)
         mulOutput = multiplier mulInput
 
 multiplier :: HiddenClockResetEnable dom
