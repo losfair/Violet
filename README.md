@@ -8,7 +8,7 @@ Dual-issue superscalar RISC-V processor written in [Clash](https://github.com/cl
 - 8-stage in-order superscalar pipeline
 - BTB + GShare branch prediction
 - 110 MHz on Artix-7
-- 3.08 CoreMark/MHz
+- 3.29 CoreMark/MHz
 
 ## Architecture
 
