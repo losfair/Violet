@@ -8,9 +8,10 @@ import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Gpr as GprT
 import qualified Debug.Trace
 
-bypassOne' :: (
-                Vec PipeT.PipeSize PipeT.Commit,
-                Vec PipeT.PipeSize PipeT.Commit,
+bypassOne' :: KnownNat (n + 1)
+           => (
+                Vec (n + 1) PipeT.Commit,
+                Vec (n + 1) PipeT.Commit,
                 (GprT.RegValue, GprT.RegValue),
                 IssueT.IssuePort)
            -> (GprT.RegValue, GprT.RegValue)
@@ -29,10 +30,11 @@ bypassOne' (cp1, cp2, (rs1Fetched, rs2Fetched), (_, inst, _)) =
         -- rs2Val = Debug.Trace.trace ("RS2-val: <" Prelude.++ show rs1 Prelude.++ " " Prelude.++ show rs2Val_ Prelude.++ ">") rs2Val_
 
 bypass :: HiddenClockResetEnable dom
+       => KnownNat (n + 1)
        => Signal dom ((IssuePort, IssuePort), ActivationMask)
        -> Signal dom ((GprT.RegValue, GprT.RegValue), (GprT.RegValue, GprT.RegValue))
-       -> Vec PipeT.PipeSize (Signal dom PipeT.Commit)
-       -> Vec PipeT.PipeSize (Signal dom PipeT.Commit)
+       -> Vec (n + 1) (Signal dom PipeT.Commit)
+       -> Vec (n + 1) (Signal dom PipeT.Commit)
        -> (Signal dom FunctionUnitActivation, Signal dom (GprT.RegValue, GprT.RegValue), Signal dom (GprT.RegValue, GprT.RegValue))
 bypass issueInfo gprFetch cp1_ cp2_ = (activation, bypass1, bypass2)
     where
@@ -45,9 +47,10 @@ bypass issueInfo gprFetch cp1_ cp2_ = (activation, bypass1, bypass2)
         bypass2 = fmap bypassOne' $ bundle (cp1, cp2, rf2, issue2)
         activation = fmap (\(a, b, c) -> maskActivation a b c) $ bundle (actMask, issue1, issue2)
 
-foldCommitPipes :: GprT.RegIndex
-                -> Vec PipeT.PipeSize PipeT.Commit
-                -> Vec PipeT.PipeSize PipeT.Commit
+foldCommitPipes :: KnownNat (n + 1)
+                => GprT.RegIndex
+                -> Vec (n + 1) PipeT.Commit
+                -> Vec (n + 1) PipeT.Commit
                 -> Maybe GprT.RegValue
 foldCommitPipes 0 _ _ = Nothing
 foldCommitPipes i cp1 cp2 = fold folder mappedCp
@@ -72,6 +75,10 @@ maskActivation mask port1 port2 = FunctionUnitActivation {
     fuInt2 = if amInt2 mask then Just port2 else Nothing,
     fuBranch1 = if amBranch1 mask then Just port1 else Nothing,
     fuBranch2 = if amBranch2 mask then Just port2 else Nothing,
+    fuLateInt1 = if amLateInt1 mask then Just port1 else Nothing,
+    fuLateInt2 = if amLateInt2 mask then Just port2 else Nothing,
+    fuLateBranch1 = if amLateBranch1 mask then Just port1 else Nothing,
+    fuLateBranch2 = if amLateBranch2 mask then Just port2 else Nothing,
     fuMem1 = if amMem1 mask then Just port1 else Nothing,
     fuMem2 = if amMem2 mask then Just port2 else Nothing,
     fuCtrl = case amCtrl mask of

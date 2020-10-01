@@ -8,6 +8,10 @@ data FunctionUnitActivation = FunctionUnitActivation {
     fuInt2 :: Maybe IssuePort,
     fuBranch1 :: Maybe IssuePort,
     fuBranch2 :: Maybe IssuePort,
+    fuLateInt1 :: Maybe IssuePort,
+    fuLateInt2 :: Maybe IssuePort,
+    fuLateBranch1 :: Maybe IssuePort,
+    fuLateBranch2 :: Maybe IssuePort,
     fuMem1 :: Maybe IssuePort,
     fuMem2 :: Maybe IssuePort,
     fuCtrl :: Maybe (IssuePort, ControlIssue)
@@ -23,6 +27,10 @@ data ActivationMask = ActivationMask {
     amInt2 :: Bool,
     amBranch1 :: Bool,
     amBranch2 :: Bool,
+    amLateInt1 :: Bool,
+    amLateInt2 :: Bool,
+    amLateBranch1 :: Bool,
+    amLateBranch2 :: Bool,
     amMem1 :: Bool,
     amMem2 :: Bool,
     amCtrl :: Maybe ControlIssue

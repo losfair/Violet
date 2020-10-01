@@ -13,9 +13,12 @@ import qualified Violet.Types.Ctrl as CtrlT
 import qualified Debug.Trace
 import qualified Prelude
 
+data LoadActivationType = NoLoad | MemLoad GprT.RegIndex | LateAlu GprT.RegIndex
+    deriving (Generic, NFDataX, Eq)
+
 data IssueState = IssueState {
-    loadActivated1 :: Vec 2 (Maybe GprT.RegIndex),
-    loadActivated2 :: Vec 2 (Maybe GprT.RegIndex),
+    loadActivated1 :: Vec 2 LoadActivationType,
+    loadActivated2 :: Vec 2 LoadActivationType,
     ctrlFirstCycle :: Bool
 } deriving (Generic, NFDataX)
 
@@ -129,29 +132,40 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         disableFirstPort = exceptionResolvedAt2
         enableSecondPort = concurrency == CanConcurrentIssue
 
+        useConflict1 = hasUseConflict state item1 layout1
+        useConflict2 = hasUseConflict state item2 layout2
+
+        -- See whether this is a deferrable ALU (int/branch) instruction.
+        aluDeferred1 = not disableFirstPort && useConflict1 && (actInt act1 || actBranch act1)
+        aluDeferred2 = enableSecondPort && useConflict2 && (actInt act2 || actBranch act2)
+
         -- Load blocked if a load-use hazard is detected or we are resolving an exception.
         -- We need to block on exception resolution because the DCache pipeline is separate from
         -- the main commit pipelines and will not get reset on recovery signals.
         loadBlocked =
-            (not disableFirstPort && hasLoadUse state item1 layout1) ||
-            (enableSecondPort && hasLoadUse state item2 layout2) ||
-            (isExceptionResolved && hasOngoingLoad state)
+            (not disableFirstPort && useConflict1 && not aluDeferred1) ||
+            (enableSecondPort && useConflict2 && not aluDeferred2) ||
+            (isExceptionResolved && hasOngoingLoadOrLateAlu state)
         ctrlBlocked = ctrlFirstCycle state || ctrlBusy == CtrlT.Busy
 
         pipelineBlocked = loadBlocked || ctrlBlocked
 
         -- Don't re-activate if we didn't issue
-        loadDst1 = if not pipelineBlocked && not disableFirstPort then itemLoadDstReg item1 act1 else Nothing
-        loadDst2 = if not pipelineBlocked && enableSecondPort then itemLoadDstReg item2 act2 else Nothing
+        loadDst1 = if not pipelineBlocked && not disableFirstPort then itemLoadOrLateAluDstReg item1 act1 layout1 aluDeferred1 else NoLoad
+        loadDst2 = if not pipelineBlocked && enableSecondPort then itemLoadOrLateAluDstReg item2 act2 layout2 aluDeferred2 else NoLoad
         loadActivated1' = fst $ shiftInAtN (loadActivated1 state) (loadDst1 :> Nil)
         loadActivated2' = fst $ shiftInAtN (loadActivated2 state) (loadDst2 :> Nil)
         ctrlFirstCycle' = actCtrl act1 && not pipelineBlocked
 
         amNormal = ActivationMask {
-            amInt1 = actInt act1 && not disableFirstPort,
-            amInt2 = actInt act2 && enableSecondPort,
-            amBranch1 = actBranch act1 && not disableFirstPort,
-            amBranch2 = actBranch act2 && enableSecondPort,
+            amInt1 = actInt act1 && not disableFirstPort && not aluDeferred1,
+            amInt2 = actInt act2 && enableSecondPort && not aluDeferred2,
+            amBranch1 = actBranch act1 && not disableFirstPort && not aluDeferred1,
+            amBranch2 = actBranch act2 && enableSecondPort && not aluDeferred2,
+            amLateInt1 = actInt act1 && not disableFirstPort && aluDeferred1,
+            amLateInt2 = actInt act2 && enableSecondPort && aluDeferred2,
+            amLateBranch1 = actBranch act1 && not disableFirstPort && aluDeferred1,
+            amLateBranch2 = actBranch act2 && enableSecondPort && aluDeferred2,
             amMem1 = (actLoad act1 || actStore act1) && not disableFirstPort,
             amMem2 = actLoad act2 && enableSecondPort,
             amCtrl =
@@ -171,35 +185,39 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
 issue :: HiddenClockResetEnable dom
       => Signal dom IssueInput
       -> Signal dom IssueOutput
-issue = mealy issue' (IssueState { loadActivated1 = repeat Nothing, loadActivated2 = repeat Nothing, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
+issue = mealy issue' (IssueState { loadActivated1 = repeat NoLoad, loadActivated2 = repeat NoLoad, ctrlFirstCycle = False }, emptyIssuePort, emptyIssuePort, emptyActivationMask, (PipeT.NotRecovery, FifoT.PopNothing))
 
-hasOngoingLoad :: IssueState -> Bool
-hasOngoingLoad state = f (loadActivated1 state) || f (loadActivated2 state)
+hasOngoingLoadOrLateAlu :: IssueState -> Bool
+hasOngoingLoadOrLateAlu state = f (loadActivated1 state) || f (loadActivated2 state)
     where
-        f actList = case findIndex (\x -> x /= Nothing) actList of
+        f actList = case findIndex (\x -> x /= NoLoad) actList of
             Just _ -> True
             Nothing -> False
 
-hasLoadUse :: IssueState -> FifoT.FifoItem -> RegLayout -> Bool
-hasLoadUse state item layout = case item of
+hasUseConflict :: IssueState -> FifoT.FifoItem -> RegLayout -> Bool
+hasUseConflict state item layout = case item of
     FifoT.Item (_, i, _) ->
         f (loadActivated1 state) || f (loadActivated2 state)
             where
                 (rs1, rs2) = GprT.decodeRs i
-                f actList = case findIndex (\x -> (hasRs1 layout && x == Just rs1) || (hasRs2 layout && x == Just rs2)) actList of
+                f actList = case findIndex (\x -> (hasRs1 layout && (x == MemLoad rs1 || x == LateAlu rs1)) || (hasRs2 layout && (x == MemLoad rs2 || x == LateAlu rs2))) actList of
                     Just _ -> True
                     Nothing -> False
     _ -> False
 
-itemLoadDstReg :: FifoT.FifoItem -> Activation -> Maybe GprT.RegIndex
-itemLoadDstReg item act = case item of
+itemLoadOrLateAluDstReg :: FifoT.FifoItem -> Activation -> RegLayout -> Bool -> LoadActivationType
+itemLoadOrLateAluDstReg item act layout aluDeferred = case item of
     FifoT.Item (_, i, _) ->
         if actLoad act then
             case GprT.decodeRd i of
-                0 -> Nothing
-                x -> Just x
-        else Nothing
-    _ -> Nothing
+                0 -> NoLoad
+                x -> MemLoad x
+        else if hasRd layout && (actInt act || actBranch act) && aluDeferred then
+            case GprT.decodeRd i of
+                0 -> NoLoad
+                x -> LateAlu x
+        else NoLoad
+    _ -> NoLoad
 
 itemWantsExceptionResolution :: FifoT.FifoItem -> Bool
 itemWantsExceptionResolution item = case item of
@@ -220,10 +238,16 @@ emptyActivationMask = ActivationMask {
     amInt2 = False,
     amBranch1 = False,
     amBranch2 = False,
+    amLateInt1 = False,
+    amLateInt2 = False,
+    amLateBranch1 = False,
+    amLateBranch2 = False,
     amMem1 = False,
     amMem2 = False,
     amCtrl = Nothing
 }
+
+emptyBypassInput = ((emptyIssuePort, emptyIssuePort), emptyActivationMask)
 
 emptyActivation :: Activation
 emptyActivation = Activation {

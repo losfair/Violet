@@ -49,6 +49,27 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         (dcacheUnit1, dcacheUnit2, dcWeReq) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem1 fuActivation) (fmap IssueT.fuMem2 fuActivation) gprPort1 gprPort2 dcWeCommit
         (ctrlUnit, ctrlBusy, sysOut) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters
 
+        -- Late ALUs.
+        lateBypassInput = register Violet.Backend.Issue.emptyBypassInput $ register Violet.Backend.Issue.emptyBypassInput bypassInput
+        lateGprFetch = register undefined $ register undefined gprFetch
+
+        lateAppend1A = commitPipe1 !! 2
+        lateAppend1B = register PipeT.Bubble lateAppend1A
+        lateAppend1C = register PipeT.Bubble lateAppend1B
+
+        lateAppend2A = commitPipe2 !! 2
+        lateAppend2B = register PipeT.Bubble lateAppend2A
+        lateAppend2C = register PipeT.Bubble lateAppend2B
+
+        lateCommitPipe1 = lateAppend1A :> lateAppend1B :> lateAppend1C :> Nil
+        lateCommitPipe2 = lateAppend2A :> lateAppend2B :> lateAppend2C :> Nil
+
+        (lateFuActivation, lateGprPort1, lateGprPort2) = Violet.Backend.Bypass.bypass lateBypassInput lateGprFetch lateCommitPipe1 lateCommitPipe2
+        lateIntAlu1 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuLateInt1 lateFuActivation) lateGprPort1
+        lateIntAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuLateInt2 lateFuActivation) lateGprPort2
+        lateBranchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch1 lateFuActivation) lateGprPort1
+        lateBranchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch2 lateFuActivation) lateGprPort2
+
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd, instRetire, branchStat) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
 
         perfCounters = Violet.Backend.PerfCounter.perfCounter instRetire branchStat
@@ -58,12 +79,12 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         commitStagesIn1 =
             selectCommit (selectCommit intAlu1 branchUnit1) ctrlUnit
             :> commitPipe1 !! 0
-            :> selectCommit dcacheUnit1 (commitPipe1 !! 1)
+            :> selectCommit (selectCommit (selectCommit lateIntAlu1 lateBranchUnit1) dcacheUnit1) (commitPipe1 !! 1)
             :> Nil
         commitStagesIn2 =
             selectCommit intAlu2 branchUnit2
             :> commitPipe2 !! 0
-            :> selectCommit dcacheUnit2 (commitPipe2 !! 1)
+            :> selectCommit (selectCommit (selectCommit lateIntAlu2 lateBranchUnit2) dcacheUnit2) (commitPipe2 !! 1)
             :> Nil
         recoveryStagesIn =
             recovery
