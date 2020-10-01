@@ -74,7 +74,7 @@ decode inst =
 dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
 dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
     where
-        memConflict = actStore act2 -- store on port 1 only
+        memConflict = actStore act2 || (actStore act1 && actLoad act2) -- store on port 1 only; load cannot issue concurrently after store (undetectable data dependency)
         ctrlConflict = actCtrl act1 || actCtrl act2
         exceptionConflict = actException act1 || actException act2
         structuralHazard = memConflict || ctrlConflict || exceptionConflict
