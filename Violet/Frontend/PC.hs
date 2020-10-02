@@ -4,6 +4,7 @@ import Clash.Prelude
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
+import qualified Violet.Config as Config
 
 data DeferredBranchApplication = Deferred | NotDeferred
     deriving (Generic, NFDataX)
@@ -19,14 +20,14 @@ pc beCmd pdGroup pushCap = out
         pdValid = isValidPredecodeFeedback $ bundle (pushCap, beCmd, pdAck)
         pdCmd = fmap maskPdCmd $ bundle (pdValid, pdCmd_)
 
-        out = fmap (\(a, b, c) -> (a, b)) immCurrent
+        out = fmap (\(a, b, c) -> (a, b)) (if Config.mergePCIF1 then immCurrent else current)
         immCurrent = fmap nextPC $ bundle (pushCap, beCmd, pdCmd, current)
-        current = register (0xfffffff8, FetchT.validMetadata, NotDeferred) immCurrent
+        current = register (if Config.mergePCIF1 then 0xfffffff8 else 0, FetchT.validMetadata, NotDeferred) immCurrent
         nextPC (pushCap, beCmd, pdCmd, current) = case (pushCap, beCmd, pdCmd, current) of
-            (FifoT.WillFull, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata, Deferred)
+            (FifoT.WillFull, FetchT.ApplyBranch (new, _), _, _) -> (new, if Config.mergePCIF1 then FetchT.validMetadata else mkBranchAppliedMetadata, Deferred)
             (FifoT.CanPush, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata, NotDeferred)
             (FifoT.CanPush, _, FetchT.EarlyRectifyBranch new, _) -> (new, mkBranchEarlyRectifiedMetadata, NotDeferred)
-            (FifoT.CanPush, _, _, (currentPC, _, Deferred)) -> (currentPC, mkBranchAppliedMetadata, NotDeferred)
+            (FifoT.CanPush, _, _, (currentPC, _, Deferred)) | Config.mergePCIF1 -> (currentPC, mkBranchAppliedMetadata, NotDeferred)
             (FifoT.CanPush, _, _, (currentPC, _, _)) -> (addPC currentPC, FetchT.validMetadata, NotDeferred)
             (_, _, _, (currentPC, currentMd, deferBr)) -> (currentPC, currentMd, deferBr)
 
