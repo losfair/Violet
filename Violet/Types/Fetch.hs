@@ -1,11 +1,13 @@
 module Violet.Types.Fetch where
 
 import Clash.Prelude
+import qualified Violet.Config as Config
+import qualified Violet.TypeLevel.Nat
 
 type PC = BitVector 32
 type Inst = BitVector 32
 
-type GlobalHistoryBits = 8 :: Nat
+type GlobalHistoryBits = $(Violet.TypeLevel.Nat.natT Config.gshareGlobalHistoryBits)
 
 data Metadata = Metadata {
     branchPredicted :: Maybe PC,

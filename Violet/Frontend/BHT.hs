@@ -5,7 +5,10 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
 
-type IndexBits = 8 :: Nat
+import qualified Violet.Config as Config
+import qualified Violet.TypeLevel.Nat
+
+type IndexBits = $(Violet.TypeLevel.Nat.natT Config.gshareSizeBits)
 
 data Entry = Entry {
     taken :: Vec (2^FetchT.GlobalHistoryBits) (BitVector 2)

@@ -5,7 +5,10 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
 
-type BufferBits = 10 :: Nat
+import qualified Violet.Config as Config
+import qualified Violet.TypeLevel.Nat
+
+type BufferBits = $(Violet.TypeLevel.Nat.natT Config.btbSizeBits)
 
 btb :: HiddenClockResetEnable dom
     => Signal dom FetchT.BackendCmd
