@@ -4,3 +4,5 @@ import Clash.Prelude
 
 mergePCIF1 = False
 lateALU = False
+enableBTB = False
+enableBHT = False

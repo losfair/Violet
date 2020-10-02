@@ -10,6 +10,8 @@ import qualified Violet.Types.ICache as ICacheT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 
+import qualified Violet.Config as Config
+
 wiring :: HiddenClockResetEnable dom
        => ICacheT.ICacheImpl a
        => a
@@ -21,7 +23,7 @@ wiring icacheImpl beCmd pushCap historyUpd = issuePorts
     where
         pcOut = Violet.Frontend.PC.pc beCmd (bundle (pdCmd, pdAck)) pushCap
         (pcVal, _) = unbundle pcOut
-        btbPrediction = Violet.Frontend.BTB.btb beCmd pcVal
-        bhtPrediction = Violet.Frontend.BHT.bht beCmd historyUpd pcVal (fmap (\x -> setBit x 2) pcVal) ghistory
+        btbPrediction = if Config.enableBTB then Violet.Frontend.BTB.btb beCmd pcVal else pure 0
+        bhtPrediction = if Config.enableBHT then Violet.Frontend.BHT.bht beCmd historyUpd pcVal (fmap (\x -> setBit x 2) pcVal) ghistory else pure (Nothing, Nothing)
 
         (pdCmd, pdAck, issuePorts, ghistory) = unbundle $ Violet.Frontend.ICache.icache icacheImpl pcOut btbPrediction bhtPrediction pushCap
