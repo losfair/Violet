@@ -12,6 +12,7 @@ import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Ctrl as CtrlT
 import qualified Debug.Trace
 import qualified Prelude
+import qualified Violet.Config as Config
 
 data LoadActivationType = NoLoad | MemLoad GprT.RegIndex | LateAlu GprT.RegIndex
     deriving (Generic, NFDataX, Eq)
@@ -136,8 +137,8 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         useConflict2 = hasUseConflict state item2 layout2
 
         -- See whether this is a deferrable ALU (int/branch) instruction.
-        aluDeferred1 = not disableFirstPort && useConflict1 && (actInt act1 || actBranch act1)
-        aluDeferred2 = enableSecondPort && useConflict2 && (actInt act2 || actBranch act2)
+        aluDeferred1 = Config.lateALU && not disableFirstPort && useConflict1 && (actInt act1 || actBranch act1)
+        aluDeferred2 = Config.lateALU && enableSecondPort && useConflict2 && (actInt act2 || actBranch act2)
 
         -- Load blocked if a load-use hazard is detected or we are resolving an exception.
         -- We need to block on exception resolution because the DCache pipeline is separate from

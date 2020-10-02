@@ -26,6 +26,8 @@ import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Commit as CommitT
 import qualified Violet.Types.DCache as DCacheT
 
+import qualified Violet.Config as Config
+
 wiring :: HiddenClockResetEnable dom
        => DCacheT.DCacheImpl a
        => a
@@ -79,12 +81,12 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         commitStagesIn1 =
             selectCommit (selectCommit intAlu1 branchUnit1) ctrlUnit
             :> commitPipe1 !! 0
-            :> selectCommit (selectCommit (selectCommit lateIntAlu1 lateBranchUnit1) dcacheUnit1) (commitPipe1 !! 1)
+            :> selectCommit (selectCommit (if Config.lateALU then selectCommit lateIntAlu1 lateBranchUnit1 else pure PipeT.Bubble) dcacheUnit1) (commitPipe1 !! 1)
             :> Nil
         commitStagesIn2 =
             selectCommit intAlu2 branchUnit2
             :> commitPipe2 !! 0
-            :> selectCommit (selectCommit (selectCommit lateIntAlu2 lateBranchUnit2) dcacheUnit2) (commitPipe2 !! 1)
+            :> selectCommit (selectCommit (if Config.lateALU then selectCommit lateIntAlu2 lateBranchUnit2 else pure PipeT.Bubble) dcacheUnit2) (commitPipe2 !! 1)
             :> Nil
         recoveryStagesIn =
             recovery
