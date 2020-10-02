@@ -5,23 +5,30 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Gpr as GprT
 
+data DeferredBranchApplication = Deferred | NotDeferred
+    deriving (Generic, NFDataX)
+
 pc :: HiddenClockResetEnable dom
    => Signal dom FetchT.BackendCmd
    -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck)
    -> Signal dom FifoT.FifoPushCap
    -> Signal dom (FetchT.PC, FetchT.Metadata)
-pc beCmd pdGroup pushCap = current
+pc beCmd pdGroup pushCap = out
     where
         (pdCmd_, pdAck) = unbundle pdGroup
         pdValid = isValidPredecodeFeedback $ bundle (pushCap, beCmd, pdAck)
         pdCmd = fmap maskPdCmd $ bundle (pdValid, pdCmd_)
 
-        current = register (0x0, FetchT.validMetadata) (fmap nextPC $ bundle (pushCap, beCmd, pdCmd, current))
+        out = fmap (\(a, b, c) -> (a, b)) immCurrent
+        immCurrent = fmap nextPC $ bundle (pushCap, beCmd, pdCmd, current)
+        current = register (0xfffffff8, FetchT.validMetadata, NotDeferred) immCurrent
         nextPC (pushCap, beCmd, pdCmd, current) = case (pushCap, beCmd, pdCmd, current) of
-            (_, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata)
-            (FifoT.CanPush, _, FetchT.EarlyRectifyBranch new, _) -> (new, mkBranchEarlyRectifiedMetadata)
-            (FifoT.CanPush, _, _, (currentPC, _)) -> (addPC currentPC, FetchT.validMetadata)
-            (_, _, _, (currentPC, currentMd)) -> (currentPC, currentMd)
+            (FifoT.WillFull, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata, Deferred)
+            (FifoT.CanPush, FetchT.ApplyBranch (new, _), _, _) -> (new, mkBranchAppliedMetadata, NotDeferred)
+            (FifoT.CanPush, _, FetchT.EarlyRectifyBranch new, _) -> (new, mkBranchEarlyRectifiedMetadata, NotDeferred)
+            (FifoT.CanPush, _, _, (currentPC, _, Deferred)) -> (currentPC, mkBranchAppliedMetadata, NotDeferred)
+            (FifoT.CanPush, _, _, (currentPC, _, _)) -> (addPC currentPC, FetchT.validMetadata, NotDeferred)
+            (_, _, _, (currentPC, currentMd, deferBr)) -> (currentPC, currentMd, deferBr)
 
         maskPdCmd (valid, cmd) = case valid of
             True -> cmd
