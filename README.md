@@ -1,6 +1,6 @@
 # Violet
 
-Dual-issue superscalar RISC-V processor written in [Clash](https://github.com/clash-lang/clash-compiler).
+Violet is a dual-issue superscalar RISC-V processor written in [Clash](https://github.com/clash-lang/clash-compiler).
 
 ## Features
 
@@ -9,10 +9,17 @@ Dual-issue superscalar RISC-V processor written in [Clash](https://github.com/cl
 - BTB + GShare branch prediction
 - 110 MHz on Artix-7
 - 3.46 CoreMark/MHz
+- Configurable
 
 ## Architecture
 
 ![Architecture](res/Violet.svg)
+
+## Plans
+
+- [ ] Implement RISC-V Privileged Architecture v1.12.
+- [ ] Instruction and data caches.
+- [ ] Boot Linux.
 
 ## Verification
 
