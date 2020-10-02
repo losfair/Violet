@@ -52,8 +52,8 @@ commit' s (cp1, cp2, rp, dcWe) = (s', out)
 
         s' = case (hadException, bcmd, earlyExc1, earlyExc2) of
             (NoException, FetchT.NoCmd, Nothing, Nothing) -> NormalOperation
-            (NoException, _, Just e, _) -> EarlyExceptionPending e
-            (NoException, _, _, Just e) -> EarlyExceptionPending e
+            (NoException, FetchT.NoCmd, Just e, _) -> EarlyExceptionPending e
+            (NoException, FetchT.NoCmd, _, Just e) -> EarlyExceptionPending e
             (HadEarlyException e, _, _, _) -> EarlyExceptionPending e
             _ -> ExceptionPending
 
