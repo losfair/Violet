@@ -3,3 +3,5 @@
 /verilog/
 /obj_dir/
 /VioletCore
+*.dyn_hi
+*.dyn_o
