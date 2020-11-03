@@ -1,6 +1,6 @@
 # Violet
 
-Violet is a dual-issue superscalar RISC-V processor written in [Clash](https://github.com/clash-lang/clash-compiler).
+Violet is a dual-issue superscalar RISC-V processor for educational purpose, written in [Clash](https://github.com/clash-lang/clash-compiler).
 
 ## Features
 
