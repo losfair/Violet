@@ -24,4 +24,4 @@ data Commit = Ok (FetchT.PC, Maybe ArchRegister, Maybe FetchT.HistoryUpdate) | E
     deriving (Generic, NFDataX)
 data Recovery = IsRecovery | NotRecovery deriving (Generic, NFDataX, Show)
 
-type PipeSize = 3 :: Nat
+type PipeSize = 3

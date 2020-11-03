@@ -9,7 +9,7 @@ import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Pipe as PipeT
 
-type RamBits = 14 :: Nat
+type RamBits = 14
 type ReadPort = MemAddr
 type WritePort = Maybe (MemAddr, MemData, WriteMask)
 
