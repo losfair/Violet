@@ -3,6 +3,7 @@ module Violet.Backend.Ctrl where
 import Clash.Prelude
 
 import Violet.Types.Ctrl
+import qualified Violet.Config as Config
 import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Pipe as PipeT
@@ -88,7 +89,11 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, per
             SWaitForEarlyExcAck -> case earlyExc of
                 Just _ -> (SWaitForEarlyExcAck, PipeT.Bubble, Idle, undefinedMultiplierInput)
                 Nothing -> (SIdle, PipeT.Bubble, Idle, undefinedMultiplierInput)
-            SMul pc rd rs1V rs2V -> (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V), Nothing), Idle, undefinedMultiplierInput)
+            SMul pc rd rs1V rs2V ->
+                if Config.mulInAlu then
+                    undefined
+                else
+                    (SIdle, PipeT.Ok (pc, Just $ PipeT.GPR rd (rs1V * rs2V), Nothing), Idle, undefinedMultiplierInput)
             SMulH pc rd s -> case s of
                 0b00 -> (SMulH pc rd 0b01, PipeT.Bubble, Busy, undefinedMultiplierInput)
                 0b01 -> (SMulH pc rd 0b10, PipeT.Bubble, Busy, undefinedMultiplierInput)
@@ -140,8 +145,11 @@ onIssue ((pc, inst, md), IssueT.CtrlNormal) (rs1V, rs2V) = case slice d6 d0 inst
             0b0 -> -- mul*
                 case slice d13 d12 inst of
                     0b00 ->
-                        -- We don't need to activate the BUSY line here since MUL takes one cycle only
-                        (SMul pc (GprT.decodeRd inst) rs1V rs2V, PipeT.Bubble, Idle, undefinedMultiplierInput)
+                        if Config.mulInAlu then
+                            undefined
+                        else
+                            -- We don't need to activate the BUSY line here since MUL takes one cycle only
+                            (SMul pc (GprT.decodeRd inst) rs1V rs2V, PipeT.Bubble, Idle, undefinedMultiplierInput)
                     x ->
                         let (src1, src2) = case x of
                                             0b01 -> -- mulh

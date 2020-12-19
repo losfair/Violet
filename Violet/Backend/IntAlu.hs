@@ -1,6 +1,7 @@
 module Violet.Backend.IntAlu where
 
 import Clash.Prelude
+import qualified Violet.Config as Config
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
@@ -14,8 +15,9 @@ intAlu' (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd ou
         rd = GprT.decodeRd inst
         arithFunct3 = slice d14 d12 inst
 
+        regSrc2 = testBit inst 5
         arithSrc1 = rs1V
-        arithSrc2 = if testBit inst 5 then rs2V else signExtend (slice d31 d20 inst)
+        arithSrc2 = if regSrc2 then rs2V else signExtend (slice d31 d20 inst)
         arithSub = testBit inst 30 && testBit inst 5
         arithSra = testBit inst 30
 
@@ -29,12 +31,19 @@ intAlu' (Just (pc, inst, _)) (rs1V, rs2V) = PipeT.Ok (pc, Just $ PipeT.GPR rd ou
             0b001 -> genShiftL arithSrc1 arithSrc2 -- sll
             0b101 ->  if arithSra then signedShiftR arithSrc1 arithSrc2 else unsignedShiftR arithSrc1 arithSrc2 -- srl/sra
 
+        mulOut =
+            if Config.mulInAlu then
+                case arithFunct3 of
+                    0b000 -> rs1V * rs2V
+                    _ -> undefined
+            else undefined
         miscIn = (slice d31 d12 inst ++# 0) :: GprT.RegValue
         miscOut = case slice d5 d5 inst of
             0b1 -> miscIn -- lui
             0b0 -> miscIn + pc -- auipc
+        
         out = case slice d2 d2 inst of
-            0b0 -> arithOut
+            0b0 -> if slice d25 d25 inst == 0b1 && regSrc2 then mulOut else arithOut
             0b1 -> miscOut
 
 intAlu :: HiddenClockResetEnable dom

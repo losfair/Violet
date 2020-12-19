@@ -65,7 +65,11 @@ decode inst =
         0b0010011 -> (intActivation, layoutRdRs1) -- ALU with imm
         0b0110011 -> case slice d31 d25 inst of
             0b0000001 -> case slice d14 d14 inst of
-                0b0 -> (ctrlActivation, layoutRdRs1Rs2) -- mul
+                0b0 -> -- mul
+                    if Config.mulInAlu && slice d13 d12 inst == 0 then
+                        (intActivation, layoutRdRs1Rs2)
+                    else
+                        (ctrlActivation, layoutRdRs1Rs2)
                 0b1 -> (ctrlActivation, layoutRdRs1Rs2) -- div
             _ -> (intActivation, layoutRdRs1Rs2)
         0b0001111 -> (ctrlActivation, layoutRdRs1) -- fence

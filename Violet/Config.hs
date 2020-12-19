@@ -10,3 +10,5 @@ enableBHT = True
 btbSizeBits = 10
 gshareSizeBits = 8
 gshareGlobalHistoryBits = 8
+
+mulInAlu = True
