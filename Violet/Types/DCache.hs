@@ -1,6 +1,8 @@
 module Violet.Types.DCache where
 
 import Clash.Prelude
+
+import Violet.Types.Ctrl
 import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Fetch as FetchT
@@ -23,6 +25,6 @@ class DCacheImpl a where
     issueAccess :: HiddenClockResetEnable dom
                 => a
                 -> Signal dom (Maybe (FetchT.PC, MemAddr, Access))
-                -> Signal dom (Maybe (FetchT.PC, MemAddr, Access))
                 -> Signal dom WriteEnable
-                -> (Signal dom PipeT.Commit, Signal dom PipeT.Commit, Signal dom WriteEnable)
+                -> Signal dom FastBusIn
+                -> (Signal dom PipeT.Commit, Signal dom WriteEnable, Signal dom FastBusOut)

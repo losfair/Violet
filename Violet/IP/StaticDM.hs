@@ -3,13 +3,13 @@ module Violet.IP.StaticDM where
 import Clash.Prelude
 
 import Violet.Types.DCache
+import Violet.Types.Ctrl
 import qualified Debug.Trace
 import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Pipe as PipeT
 
-type RamBits = 14
 type ReadPort = MemAddr
 type WritePort = Maybe (MemAddr, MemData, WriteMask)
 
@@ -19,35 +19,26 @@ data StaticDM = StaticDM
     deriving (Generic, NFDataX)
 
 instance DCacheImpl StaticDM where
-    issueAccess _ req1 req2 weCommit = (commitPort1, commitPort2, weReq)
+    issueAccess _ req weCommit fastBusIn = (commitPort, weReq, fastBusOut)
         where
             -- stage 1
-            readPort1 = fmap transformReadPort req1
-            readPort2 = fmap transformReadPort req2
-            writePort = fmap transformWritePort req1
+            pipelinedAddrPort = fmap transformPipelinedAddrPort req
+            writePort = fmap transformWritePort req
 
             -- stage 2
-            rawReadResult1 = mkRam readPort1 writeCommitPort
-            rawReadResult2 = mkRam readPort2 writeCommitPort
-            readMini1 = register Nothing (fmap transformReadMini req1)
-            readMini2 = register Nothing (fmap transformReadMini req2)
-            delayedPC1 = register 0 (fmap transformPC req1)
-            delayedPC2 = register 0 (fmap transformPC req2)
-            delayedRd1 = register 0 (fmap transformRd req1)
-            delayedRd2 = register 0 (fmap transformRd req2)
-            delayedReadPort1 = register 0 readPort1
-            delayedReadPort2 = register 0 readPort2
-            forwardedReadResult1 = writeForward delayedReadPort1 rawReadResult1 writePortFinal
-            forwardedReadResult2 = writeForward delayedReadPort2 rawReadResult2 writePortFinal
-            readResult1 = fmap transformReadResult $ bundle (forwardedReadResult1, readMini1)
-            readResult2 = fmap transformReadResult $ bundle (forwardedReadResult2, readMini2)
-            commitPort1 = fmap transformCommitPort $ bundle (delayedPC1, delayedRd1, readResult1, writePortD1, delayedReadPort1)
-            commitPort2 = fmap transformCommitPort $ bundle (delayedPC2, delayedRd2, readResult2, pure Nothing, delayedReadPort2)
+            (rawReadResult, ramProviderReady, fastBusOut) = mkRam pipelinedAddrPort req writeCommitPort fastBusIn
+            readMini = register Nothing (fmap transformReadMini req)
+            delayedPC = register 0 (fmap transformPC req)
+            delayedRd = register 0 (fmap transformRd req)
+            delayedPipelinedAddrPort = register 0 pipelinedAddrPort
+            forwardedReadResult = writeForward delayedPipelinedAddrPort rawReadResult writePortFinal
+            readResult = fmap transformReadResult $ bundle (forwardedReadResult, readMini)
+            commitPort = fmap transformCommitPort $ bundle (delayedPC, delayedRd, readResult, writePortD1, delayedPipelinedAddrPort, ramProviderReady)
             writePortD1 = register Nothing writePort
 
             -- Commit stage doesn't handle DCache exception and write disable in the same cycle.
             -- So we need to handle it here.
-            writePortD1Gated = fmap f $ bundle (writePortD1, commitPort1)
+            writePortD1Gated = fmap f $ bundle (writePortD1, commitPort)
                 where
                     f (wp, cp) = case cp of
                         PipeT.Exc _ -> Nothing
@@ -58,9 +49,11 @@ instance DCacheImpl StaticDM where
             weReq = register NoWrite (fmap transformWeReq writePortD1Gated)
             writeCommitPort = fmap transformWriteCommit $ bundle (writePortFinal, weCommit)
 
-            transformReadPort req = case req of
-                Just (_, addr, ReadAccess (_, _, _)) -> addr
+            -- Pipelined r/w address port.
+            transformPipelinedAddrPort req = case req of
+                Just (_, addr, _) -> addr
                 _ -> 0
+
             transformWritePort req = case req of
                 Just (_, addr, WriteAccess (v, mask)) -> Just (addr, v, mask)
                 _ -> Nothing
@@ -91,11 +84,11 @@ instance DCacheImpl StaticDM where
                         SelHalf0 -> ext16 (ram1 ++# ram0)
                         SelHalf1 -> ext16 (ram3 ++# ram2)
                         SelWord -> ram3 ++# ram2 ++# ram1 ++# ram0
-            transformCommitPort (pc, rd, readRes, writePort, readPort) = case (readRes, writePort, readPort) of
-                (_, Just (waddr, wdata, _), _) | isIoAddr waddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemWrite pc waddr wdata)
-                (_, _, raddr) | isIoAddr raddr -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemRead pc rd raddr)
-                (Just x, _, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x), Nothing)
-                (_, Just _, _) -> PipeT.Ok (pc, Nothing, Nothing)
+            transformCommitPort (pc, rd, readRes, writePort, readPort, ramProviderReady) = case (readRes, writePort, readPort, ramProviderReady) of
+                (_, Just (waddr, wdata, _), _, False) -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemWrite pc waddr wdata)
+                (Just _, _, raddr, False) -> PipeT.Exc (pc, PipeT.EarlyExc $ PipeT.IOMemRead pc rd raddr)
+                (Just x, _, _, _) -> PipeT.Ok (pc, Just (PipeT.GPR rd x), Nothing)
+                (_, Just _, _, _) -> PipeT.Ok (pc, Nothing, Nothing)
                 _ -> PipeT.Bubble
             transformWriteCommit (writePort, weCommit) = case weCommit of
                 CanWrite -> writePort
@@ -121,34 +114,34 @@ writeForward rp input wp = fmap forwardOne $ bundle (wp, rp, input)
 
 mkRam :: HiddenClockResetEnable dom
       => Signal dom ReadPort
+      -> Signal dom (Maybe (FetchT.PC, MemAddr, Access))
       -> Signal dom WritePort
-      -> Signal dom (BitVector 8, BitVector 8, BitVector 8, BitVector 8)
-mkRam readPort writePort = bundle (ram3, ram2, ram1, ram0)
+      -> Signal dom FastBusIn
+      -> (
+          Signal dom (BitVector 8, BitVector 8, BitVector 8, BitVector 8),
+          Signal dom Bool,
+          Signal dom FastBusOut
+          )
+mkRam pipelinedAddrPort req writeCommit fastBusIn = (values, readiness, busOut)
     where
-        ram0 = mkByteRam (slice d7 d0) (\x -> testBit x 0) "dm.0.txt" readPort writePort
-        ram1 = mkByteRam (slice d15 d8) (\x -> testBit x 1) "dm.1.txt" readPort writePort
-        ram2 = mkByteRam (slice d23 d16) (\x -> testBit x 2) "dm.2.txt" readPort writePort
-        ram3 = mkByteRam (slice d31 d24) (\x -> testBit x 3) "dm.3.txt" readPort writePort
+        values = bundle (
+            slice d31 d24 . iFastData <$> fastBusIn,
+            slice d23 d16 . iFastData <$> fastBusIn,
+            slice d15 d8 . iFastData <$> fastBusIn,
+            slice d7 d0 . iFastData <$> fastBusIn
+            )
+        readiness = iFastReady <$> fastBusIn
+        busOut = mkBusOut <$> bundle (pipelinedAddrPort, req, writeCommit)
 
-mkByteRam :: HiddenClockResetEnable dom
-          => (BitVector 32 -> BitVector 8)
-          -> (WriteMask -> Bool)
-          -> String
-          -> Signal dom MemAddr
-          -> Signal dom (Maybe (MemAddr, MemData, WriteMask))
-          -> Signal dom (BitVector 8)
-mkByteRam getRange getWe fileName readPort writePort = readResult
-    where
-        rawAddr = fmap ramIndex readPort
-        rawWrite = fmap extractWrite writePort
-        readResult = readNew (blockRamFilePow2 fileName) rawAddr rawWrite
-        extractWrite x = case x of
-            Just (addr, v, mask) -> if getWe mask then Just (ramIndex addr, getRange v) else Nothing
-            _ -> Nothing
-
-ramIndex :: MemAddr
-         -> Unsigned RamBits
-ramIndex x = unpack $ slice (SNat :: SNat (2 + RamBits - 1)) (SNat :: SNat 2) x
-
-isIoAddr :: MemAddr -> Bool
-isIoAddr x = slice d31 d28 x == 0xf
+        mkBusOut (pipelinedAddrPort, req, writeCommit) = FastBusOut {
+            oFastValid = fastValid, oFastWrite = fastWrite, oFastAddr = fastAddr,
+            oFastWrValid = fastWrValid, oFastWrAddr = fastWrAddr, oFastWrData = fastWrData, oFastWrMask = fastWrMask
+            }
+            where
+                (fastValid, fastWrite, fastAddr) = case req of
+                    Just (_, addr, WriteAccess (v, mask)) -> (True, True, addr)
+                    Just (_, addr, ReadAccess _) -> (True, False, addr)
+                    _ -> (False, undefined, undefined)
+                (fastWrValid, fastWrAddr, fastWrData, fastWrMask) = case writeCommit of
+                    Just (addr, wdata, mask) -> (True, addr, wdata, mask)
+                    _ -> (False, undefined, undefined, undefined)

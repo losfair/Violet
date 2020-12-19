@@ -32,11 +32,17 @@ violetCore' sysIn = bundle (commitLog, sysOut)
             PortName "clk",
             PortName "rst",
             PortName "en",
-            PortName "sysbus_i"
+            PortProduct "sysbus_i" [
+                PortName "fast",
+                PortName "io"
+            ]
         ],
         t_output = PortProduct "" [
             PortName "commit",
-            PortName "sysbus_o"
+            PortProduct "sysbus_o" [
+                PortName "fast",
+                PortName "io"
+            ]
         ]
     })
     #-}

@@ -41,9 +41,17 @@ undefinedMultiplierInput :: MultiplierInput
 undefinedMultiplierInput = (undefined, undefined)
 
 ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
-      -> (Maybe (IssueT.IssuePort, IssueT.ControlIssue), (GprT.RegValue, GprT.RegValue), Maybe PipeT.EarlyException, MultiplierOutput, SystemBusIn, PerfCounterT.PerfCounters)
-      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut))
-ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, perfCtr) = ((state', busy', mulInput'), (commit', busy, mulInput, bus))
+      -> (
+          Maybe (IssueT.IssuePort, IssueT.ControlIssue),
+          (GprT.RegValue, GprT.RegValue),
+          Maybe PipeT.EarlyException,
+          MultiplierOutput,
+          SystemBusIn,
+          PerfCounterT.PerfCounters,
+          FastBusOut
+          )
+      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut, FastBusIn))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, perfCtr, fastBusOut) = ((state', busy', mulInput'), (commit', busy, mulInput, bus, iFastBus sysIn))
     where
         (csrNextState, csrCommit) = case state of
             SCsrOp pc index op rd rs1OrUimm ->
@@ -113,9 +121,9 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, per
             SCsrOp pc index op dst rs1OrUimm ->
                 (csrNextState, csrCommit, Busy, undefinedMultiplierInput)
         bus = case state of
-            SIOMemRead pc dst addr -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = False, oIoAddr = addr, oIoData = undefined } }
-            SIOMemWrite pc addr d -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = True, oIoAddr = addr, oIoData = d } }
-            _ -> idleSystemBusOut
+            SIOMemRead pc dst addr -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = False, oIoAddr = addr, oIoData = undefined }, oFastBus = fastBusOut }
+            SIOMemWrite pc addr d -> idleSystemBusOut { oIoBus = IOBusOut { oIoValid = True, oIoWrite = True, oIoAddr = addr, oIoData = d }, oFastBus = fastBusOut }
+            _ -> idleSystemBusOut { oFastBus = fastBusOut }
 
 onEarlyExc :: PipeT.EarlyException -> (CtrlState, PipeT.Commit, CtrlBusy, MultiplierInput)
 onEarlyExc e = case e of
@@ -170,11 +178,12 @@ ctrl :: HiddenClockResetEnable dom
      -> Signal dom (Maybe PipeT.EarlyException)
      -> Signal dom SystemBusIn
      -> Signal dom PerfCounterT.PerfCounters
-     -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut)
-ctrl issue gprPair earlyExc sysIn perfCtr = bundle $ (commit, busy, sysOut)
+     -> Signal dom FastBusOut
+     -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut, FastBusIn)
+ctrl issue gprPair earlyExc sysIn perfCtr fastBusOut = bundle $ (commit, busy, sysOut, fastBusIn)
     where
         m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
-        (commit, busy, mulInput, sysOut) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn, perfCtr)
+        (commit, busy, mulInput, sysOut, fastBusIn) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn, perfCtr, fastBusOut)
         mulOutput = multiplier mulInput
 
 multiplier :: HiddenClockResetEnable dom
