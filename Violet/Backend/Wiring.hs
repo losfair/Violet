@@ -40,16 +40,23 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Violet.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
         (bypassInput, recovery, immRecovery, fifoPopReq) = unbundle $ Violet.Backend.Issue.issue $ bundle (issueInput1, issueInput2, ctrlBusy)
         gprFetch = Violet.Backend.Gpr.gpr $ bundle (bundle (issueInput1, issueInput2), gprWritePort1, gprWritePort2)
-        (fuActivation, gprPort1, gprPort2) = Violet.Backend.Bypass.bypass bypassInput gprFetch commitPipe1 commitPipe2
+        (fuActivation, gprPort1, gprPort2) = Violet.Backend.Bypass.bypass bypassInput gprFetch commitPipe1 commitPipe2 sfbPredicate
         commitPipe1 = Violet.Backend.Pipe.completionPipe immRecovery commitStagesIn1
         commitPipe2 = Violet.Backend.Pipe.completionPipe immRecovery commitStagesIn2
         recoveryPipe = Violet.Backend.Pipe.recoveryPipe recoveryStagesIn
         intAlu1 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt1 fuActivation) gprPort1
         intAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuInt2 fuActivation) gprPort2
-        branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
-        branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
+        (branchUnit1, predicate1Input) = unbundle $ Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
+        (branchUnit2, predicate2Input) = unbundle $ Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
         (dcacheUnit1, dcWeReq, fastBusOut) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem1 fuActivation) gprPort1 dcWeCommit fastBusIn
         (ctrlUnit, ctrlBusy, sysOut, fastBusIn) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters fastBusOut
+
+        -- Sfb predicate.
+        sfbPredicate = regMaybe BranchT.SfbDisable (select <$> bundle (predicate1Input, predicate2Input))
+            where
+                select (_, (Just x)) = Just x
+                select ((Just x), _) = Just x
+                select _ = Nothing
 
         -- Late ALUs.
         lateBypassInput = register Violet.Backend.Issue.emptyBypassInput $ register Violet.Backend.Issue.emptyBypassInput bypassInput
@@ -66,11 +73,13 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         lateCommitPipe1 = lateAppend1A :> lateAppend1B :> lateAppend1C :> Nil
         lateCommitPipe2 = lateAppend2A :> lateAppend2B :> lateAppend2C :> Nil
 
-        (lateFuActivation, lateGprPort1, lateGprPort2) = Violet.Backend.Bypass.bypass lateBypassInput lateGprFetch lateCommitPipe1 lateCommitPipe2
+        lateSfbPredicate = register undefined $ register undefined sfbPredicate
+
+        (lateFuActivation, lateGprPort1, lateGprPort2) = Violet.Backend.Bypass.bypass lateBypassInput lateGprFetch lateCommitPipe1 lateCommitPipe2 lateSfbPredicate
         lateIntAlu1 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuLateInt1 lateFuActivation) lateGprPort1
         lateIntAlu2 = Violet.Backend.IntAlu.intAlu (fmap IssueT.fuLateInt2 lateFuActivation) lateGprPort2
-        lateBranchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch1 lateFuActivation) lateGprPort1
-        lateBranchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch2 lateFuActivation) lateGprPort2
+        (lateBranchUnit1, _) = unbundle $ Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch1 lateFuActivation) lateGprPort1
+        (lateBranchUnit2, _) = unbundle $ Violet.Backend.Branch.branch (fmap IssueT.fuLateBranch2 lateFuActivation) lateGprPort2
 
         (gprWritePort1, gprWritePort2, backendCmd, dcWeCommit, commitLog, earlyExc, historyUpd, instRetire, branchStat) = unbundle $ Violet.Backend.Commit.commit $ bundle (last commitPipe1, last commitPipe2, last recoveryPipe, dcWeReq)
 

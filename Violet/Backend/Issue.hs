@@ -50,8 +50,8 @@ layoutRdRs1Rs2 = RegLayout { hasRd = True, hasRs1 = True, hasRs2 = True }
 layoutRs1Rs2 = RegLayout { hasRd = False, hasRs1 = True, hasRs2 = True }
 layoutNoReg = RegLayout { hasRd = False, hasRs1 = False, hasRs2 = False }
 
-decode :: FetchT.Inst -> (Activation, RegLayout)
-decode inst =
+decode :: (FetchT.Inst, FetchT.Metadata) -> (Activation, RegLayout)
+decode (inst, _) =
     if inst == FetchT.nopInst then
         (emptyActivation, layoutNoReg)
     else case slice d6 d0 inst of
@@ -76,13 +76,14 @@ decode inst =
         0b1110011 -> (ctrlActivation, layoutNoReg) -- ecall/ebreak
         _ -> (excActivation, layoutNoReg)
 
-dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
-dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
+dep :: ((FetchT.Inst, FetchT.Metadata), Activation, RegLayout) -> ((FetchT.Inst, FetchT.Metadata), Activation, RegLayout) -> Concurrency
+dep ((inst1, md1), act1, layout1) ((inst2, md2), act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
     where
         memConflict = actStore act2 || actLoad act2 -- load/store can only issue on port 1
         ctrlConflict = actCtrl act1 || actCtrl act2
         exceptionConflict = actException act1 || actException act2
-        structuralHazard = memConflict || ctrlConflict || exceptionConflict
+        condExecConflict = Config.sfbElimination && FetchT.isSfb md1 && FetchT.isConditional md2
+        structuralHazard = memConflict || ctrlConflict || exceptionConflict || condExecConflict
 
         inst1Rs1 = slice d19 d15 inst1
         inst1Rs2 = slice d24 d20 inst1
@@ -101,8 +102,8 @@ dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurre
 
         anyHazard = structuralHazard || regHazard
 
-decodeDep' :: FetchT.Inst
-           -> FetchT.Inst
+decodeDep' :: (FetchT.Inst, FetchT.Metadata)
+           -> (FetchT.Inst, FetchT.Metadata)
            -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
 decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
     where
@@ -113,12 +114,16 @@ decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
 decodeDep :: FifoT.FifoItem
           -> FifoT.FifoItem
           -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
-decodeDep a b = decodeDep' inst1 inst2
+decodeDep a b = decodeDep' group1 group2
     where
-        inst1 = selInst a
-        inst2 = selInst b
-        selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then x else FetchT.nopInst
-        selInst FifoT.Bubble = FetchT.nopInst
+        group1 = selGroup a
+        group2 = selGroup b
+        selGroup (FifoT.Item (_, x, md)) = (if FetchT.isValidInst md then x else FetchT.nopInst, md)
+        selGroup FifoT.Bubble = (FetchT.nopInst, FetchT.emptyMetadata)
+
+isSfb :: FifoT.FifoItem -> Bool
+isSfb (FifoT.Item (_, _, md)) = FetchT.isSfb md
+isSfb FifoT.Bubble = False
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
@@ -141,8 +146,8 @@ issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
         useConflict2 = hasUseConflict state item2 layout2
 
         -- See whether this is a deferrable ALU (int/branch) instruction.
-        aluDeferred1 = Config.lateALU && not disableFirstPort && useConflict1 && (actInt act1 || actBranch act1)
-        aluDeferred2 = Config.lateALU && enableSecondPort && useConflict2 && (actInt act2 || actBranch act2)
+        aluDeferred1 = Config.lateALU && not disableFirstPort && useConflict1 && (actInt act1 || (actBranch act1 && not (isSfb item1)))
+        aluDeferred2 = Config.lateALU && enableSecondPort && useConflict2 && (actInt act2 || (actBranch act2 && not (isSfb item2)))
 
         -- Load blocked if a load-use hazard is detected or we are resolving an exception.
         -- We need to block on exception resolution because the DCache pipeline is separate from

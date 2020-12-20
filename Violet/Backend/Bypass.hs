@@ -5,6 +5,8 @@ import Violet.Types.Issue
 import qualified Prelude
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Issue as IssueT
+import qualified Violet.Types.Fetch as FetchT
+import qualified Violet.Types.Branch as BranchT
 import qualified Violet.Types.Gpr as GprT
 import qualified Debug.Trace
 
@@ -35,16 +37,18 @@ bypass :: HiddenClockResetEnable dom
        -> Signal dom ((GprT.RegValue, GprT.RegValue), (GprT.RegValue, GprT.RegValue))
        -> Vec (n + 1) (Signal dom PipeT.Commit)
        -> Vec (n + 1) (Signal dom PipeT.Commit)
+       -> Signal dom BranchT.SfbPredicate
        -> (Signal dom FunctionUnitActivation, Signal dom (GprT.RegValue, GprT.RegValue), Signal dom (GprT.RegValue, GprT.RegValue))
-bypass issueInfo gprFetch cp1_ cp2_ = (activation, bypass1, bypass2)
+bypass issueInfo gprFetch cp1_ cp2_ sfbPredicate = (activation, bypass1, bypass2)
     where
-        (issuePorts, actMask) = unbundle issueInfo
+        (issuePorts, actMask') = unbundle issueInfo
         (issue1, issue2) = unbundle issuePorts
         (rf1, rf2) = unbundle gprFetch
         cp1 = bundle cp1_
         cp2 = bundle cp2_
         bypass1 = fmap bypassOne' $ bundle (cp1, cp2, rf1, issue1)
         bypass2 = fmap bypassOne' $ bundle (cp1, cp2, rf2, issue2)
+        actMask = overrideActMask <$> bundle (actMask', issue1, issue2, sfbPredicate)
         activation = fmap (\(a, b, c) -> maskActivation a b c) $ bundle (actMask, issue1, issue2)
 
 foldCommitPipes :: KnownNat (n + 1)
@@ -68,6 +72,25 @@ foldCommitPipes i cp1 cp2 = fold folder mappedCp
 overrideRegfetch :: GprT.RegValue -> Maybe GprT.RegValue -> GprT.RegValue
 overrideRegfetch fetched (Just x) = x
 overrideRegfetch fetched _ = fetched
+
+overrideActMask :: (ActivationMask, IssueT.IssuePort, IssueT.IssuePort, BranchT.SfbPredicate) -> ActivationMask
+overrideActMask (am, (pc1, _, md1), (pc2, _, md2), pred) =
+    ActivationMask {
+        amInt1 = amInt1 am && not disable1,
+        amInt2 = amInt2 am && not disable2,
+        amBranch1 = amBranch1 am && not disable1,
+        amBranch2 = amBranch2 am && not disable2,
+        amLateInt1 = amLateInt1 am && not disable1,
+        amLateInt2 = amLateInt2 am && not disable2,
+        amLateBranch1 = amLateBranch1 am && not disable1,
+        amLateBranch2 = amLateBranch2 am && not disable2,
+        amMem1 = amMem1 am && not disable1,
+        amMem2 = amMem2 am && not disable2,
+        amCtrl = if disable1 then Nothing else amCtrl am
+    }
+    where
+        disable1 = FetchT.isConditional md1 && pred == BranchT.SfbDisable
+        disable2 = FetchT.isConditional md2 && pred == BranchT.SfbDisable
 
 maskActivation :: ActivationMask -> IssuePort -> IssuePort -> FunctionUnitActivation
 maskActivation mask port1 port2 = FunctionUnitActivation {

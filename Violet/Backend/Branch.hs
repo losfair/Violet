@@ -1,16 +1,18 @@
 module Violet.Backend.Branch where
 
 import Clash.Prelude
+import Violet.Types.Branch
 import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Gpr as GprT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Fetch as FetchT
+import qualified Violet.Config as Config
 
 branch' :: Maybe IssueT.IssuePort
         -> (GprT.RegValue, GprT.RegValue)
-        -> PipeT.Commit
-branch' Nothing _ = PipeT.Bubble
-branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
+        -> (PipeT.Commit, Maybe SfbPredicate)
+branch' Nothing _ = (PipeT.Bubble, Nothing)
+branch' (Just (pc, inst, meta)) (rs1V, rs2V) = (commit, predicate)
     where
         mode = slice d3 d2 inst
         rd = GprT.decodeRd inst
@@ -34,19 +36,28 @@ branch' (Just (pc, inst, meta)) (rs1V, rs2V) = commit
                     else
                         PipeT.Exc (pc, PipeT.BranchLink dst rd (pc + 4))
             _ -> -- 0b00: bcond
-                if not condSatisfied && FetchT.branchPredicted meta == Nothing then
-                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = False, FetchT.hHistory = FetchT.globalHistory meta })
-                else if condSatisfied && FetchT.branchPredicted meta == Just (pc + FetchT.decodeRelBrOffset inst) then
-                    PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = True, FetchT.hHistory = FetchT.globalHistory meta })
-                else if not condSatisfied then
-                    PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4) (FetchT.globalHistory meta))
-                else -- condSatisfied
-                    PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst) (FetchT.globalHistory meta))
+                if Config.sfbElimination && FetchT.isSfb meta then
+                    PipeT.Ok (pc, Nothing, Nothing)
+                else
+                    if not condSatisfied && FetchT.branchPredicted meta == Nothing then
+                        PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = False, FetchT.hHistory = FetchT.globalHistory meta })
+                    else if condSatisfied && FetchT.branchPredicted meta == Just (pc + FetchT.decodeRelBrOffset inst) then
+                        PipeT.Ok (pc, Nothing, Just FetchT.HistoryUpdate { FetchT.hFrom = pc, FetchT.hTaken = True, FetchT.hHistory = FetchT.globalHistory meta })
+                    else if not condSatisfied then
+                        PipeT.Exc (pc, PipeT.BranchFalsePos (pc + 4) (FetchT.globalHistory meta))
+                    else -- condSatisfied
+                        PipeT.Exc (pc, PipeT.BranchFalseNeg (pc + FetchT.decodeRelBrOffset inst) (FetchT.globalHistory meta))
+
+        predicate =
+            if Config.sfbElimination && FetchT.isSfb meta then
+                Just $ if condSatisfied then SfbDisable else SfbEnable
+            else
+                Nothing
 
 branch :: HiddenClockResetEnable dom
        => Signal dom (Maybe IssueT.IssuePort)
        -> Signal dom (GprT.RegValue, GprT.RegValue)
-       -> Signal dom PipeT.Commit
+       -> Signal dom (PipeT.Commit, Maybe SfbPredicate)
 branch a b = fmap (\(a, b) -> branch' a b) $ bundle (a, b)
 
 unsignedLt :: GprT.RegValue -> GprT.RegValue -> Bool

@@ -14,16 +14,16 @@ violetCore :: Clock XilinxSystem
           -> Reset XilinxSystem
           -> Enable XilinxSystem
           -> Signal XilinxSystem CtrlT.SystemBusIn
-          -> Signal XilinxSystem (CommitT.CommitLog, CtrlT.SystemBusOut)
+          -> Signal XilinxSystem (CommitT.CommitLog, CtrlT.SystemBusOut, (FetchT.PC, BitVector 1))
 violetCore = exposeClockResetEnable violetCore'
 
 violetCore' :: HiddenClockResetEnable dom
             => Signal dom CtrlT.SystemBusIn
-            -> Signal dom (CommitT.CommitLog, CtrlT.SystemBusOut)
-violetCore' sysIn = bundle (commitLog, sysOut)
+            -> Signal dom (CommitT.CommitLog, CtrlT.SystemBusOut, (FetchT.PC, BitVector 1))
+violetCore' sysIn = bundle (commitLog, sysOut, sfbCounter)
     where
-        frontendOut = Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.StaticIM beCmd fifoPushCap historyUpd
-        (beCmd, commitLog, fifoPushCap, sysOut, historyUpd) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
+        (ip1, ip2, sfbCounter) = unbundle $ Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.StaticIM beCmd fifoPushCap historyUpd
+        (beCmd, commitLog, fifoPushCap, sysOut, historyUpd) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM (bundle (ip1, ip2)) sysIn
 
 {-# ANN violetCore
     (Synthesize {
@@ -42,7 +42,8 @@ violetCore' sysIn = bundle (commitLog, sysOut)
             PortProduct "sysbus_o" [
                 PortName "fast",
                 PortName "io"
-            ]
+            ],
+            PortName "sfb_counter"
         ]
     })
     #-}

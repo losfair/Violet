@@ -12,3 +12,5 @@ gshareSizeBits = 8
 gshareGlobalHistoryBits = 8
 
 mulInAlu = True
+sfbElimination = True
+sfbMaxLengthBits = 1
