@@ -5,3 +5,4 @@
 /VioletCore
 *.dyn_hi
 *.dyn_o
+*.elf
