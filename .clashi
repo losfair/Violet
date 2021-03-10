@@ -1,0 +1,4 @@
+:set prompt "ghci> "
+:set prompt-cont "ghci| "
+:seti -Wno-type-defaults
+:module +Clash.Prelude

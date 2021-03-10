@@ -6,3 +6,5 @@
 *.dyn_hi
 *.dyn_o
 *.elf
+/.stack-work/
+/violet-core.cabal

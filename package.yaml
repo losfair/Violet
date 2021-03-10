@@ -1,0 +1,61 @@
+name: violet-core
+
+extra-source-files:
+- README.md
+
+dependencies:
+- base >= 4.7 && < 5
+- clash-lib
+- clash-prelude
+# - clash-cosim
+- ghc-typelits-natnormalise
+- ghc-typelits-extra
+- ghc-typelits-knownnat
+- template-haskell
+
+build-tools:
+- clash-ghc
+
+default-extensions:
+- BinaryLiterals
+- ConstraintKinds
+- DataKinds
+- DeriveAnyClass
+- DeriveGeneric
+- DeriveLift
+- DerivingStrategies
+- ExplicitForAll
+- ExplicitNamespaces
+- FlexibleContexts
+- FlexibleInstances
+- KindSignatures
+- MagicHash
+- MonoLocalBinds
+- QuasiQuotes
+- ScopedTypeVariables
+- TemplateHaskellQuotes
+- TypeApplications
+- TypeFamilies
+- TypeOperators
+- NoImplicitPrelude
+- NoMonomorphismRestriction
+- NoStrict
+- NoStrictData
+- PartialTypeSignatures
+- NumDecimals
+- NumericUnderscores
+- RankNTypes
+- OverloadedStrings
+- OverloadedLists
+- AllowAmbiguousTypes
+- TemplateHaskell
+
+ghc-options:
+- -fplugin=GHC.TypeLits.Normalise
+- -fplugin=GHC.TypeLits.Extra.Solver
+- -fplugin=GHC.TypeLits.KnownNat.Solver
+#- -Wall
+#- -Wno-partial-type-signatures
+
+library:
+  source-dirs: src
