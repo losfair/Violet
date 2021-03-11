@@ -2,3 +2,8 @@ resolver: lts-16.2
 
 packages:
 - .
+
+extra-deps:
+- clash-ghc-1.2.5@sha256:99905a8baa29ce70d71a00de1fe1329057b356dcc022a8ef557ea39e67fb941e,8294
+- clash-lib-1.2.5@sha256:b9eec301fd23b4cbedb6600fec431ffb2c0cf25e28d131f28a5b3955bc4676d7,11298
+- clash-prelude-1.2.5@sha256:2ea4d0506adfccd0e817a67e47de132290a856535dd69bcc71e7fbce24ece3f2,15307

@@ -1,6 +1,5 @@
 *.hi
 *.o
-/verilog/
 /obj_dir/
 /VioletCore
 *.dyn_hi
@@ -8,3 +7,4 @@
 *.elf
 /.stack-work/
 /violet-core.cabal
+/src/verilog/

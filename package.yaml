@@ -5,8 +5,8 @@ extra-source-files:
 
 dependencies:
 - base >= 4.7 && < 5
-- clash-lib
-- clash-prelude
+- clash-lib >= 1.2.5
+- clash-prelude >= 1.2.5
 # - clash-cosim
 - ghc-typelits-natnormalise
 - ghc-typelits-extra
@@ -14,7 +14,7 @@ dependencies:
 - template-haskell
 
 build-tools:
-- clash-ghc
+- clash-ghc >= 1.2.5
 
 default-extensions:
 - BinaryLiterals
@@ -59,3 +59,10 @@ ghc-options:
 
 library:
   source-dirs: src
+
+executables:
+  violet-exe:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+    - violet-core
