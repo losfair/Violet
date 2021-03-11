@@ -1,0 +1,71 @@
+name: violet.build
+on:
+- push
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Haskell
+        uses: haskell/actions/setup@v1
+        with:
+          ghc-version: latest
+          enable-stack: true
+          stack-version: latest
+      - name: Cache dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.stack
+            .stack-work
+          key: ${{ runner.os }}-stack-dependencies
+      - name: Install packages
+        run: sudo apt install -y verilator build-essential
+      - name: Install dependencies
+        run: stack install
+      - name: Build high-level simulation binary
+        run: stack build
+      - name: Build core
+        run: make build-core
+      - name: Build verilator binary
+        run: ./verilator_build.sh
+      - name: Upload verilator binary
+        uses: actions/upload-artifact@v2
+        with:
+          name: verilator-bin
+          path: obj_dir/Vtop
+  coremark:
+    name: CoreMark
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Fetch binary
+        uses: actions/download-artifact@v2
+        with:
+          name: verilator-bin
+          path: Vtop
+      - name: Fetch CoreMark
+        run: |
+          git clone https://github.com/losfair/coremark-violet
+          cd coremark-violet
+          git checkout bad1b18708e712a22b2778f496b373198a6d801d
+          patch -p1 -i ../test/coremark.diff
+      - name: Install packages
+        run: sudo apt install gcc-riscv64-unknown-elf build-essential
+      - name: Build CoreMark
+        run: |
+          cd coremark-violet && make PORT_DIR=violet-baremetal compile && cd ..
+          riscv64-unknown-elf-objcopy ./coremark-violet/coremark.exe --strip-all -O binary coremark.bin
+          python3 ./Scripts/im_encode.py < coremark.bin > im.txt
+          python3 ./Scripts/hexencode.py < coremark.bin > dm.txt
+      - name: Run CoreMark
+        run: |
+          chmod +x ./Vtop/Vtop
+          ./Vtop/Vtop 2>&1 | tee run.log
+          grep "Correct operation validated" run.log > /dev/null
+          python3 ./test/parse-coremark-result.py < run.log

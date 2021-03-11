@@ -22,6 +22,10 @@ always @ (posedge clk) begin
             sysbus_i_io_data <= 'b0;
             sysbus_i_io_ready <= 'b1;
         end
+        'hfe000004: begin
+            $display("Termination requested");
+            $finish();
+        end
         'hfe000010: begin
             sysbus_i_io_data <= cycles[31:0];
             sysbus_i_io_ready <= 'b1;

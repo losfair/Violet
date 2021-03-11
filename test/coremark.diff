@@ -1,0 +1,13 @@
+diff --git a/violet-baremetal/core_portme.c b/violet-baremetal/core_portme.c
+index 2c85b82..2fe7c85 100644
+--- a/violet-baremetal/core_portme.c
++++ b/violet-baremetal/core_portme.c
+@@ -55,7 +55,7 @@ volatile ee_s32 seed5_volatile = 0;
+ #define MYTIMEDIFF(fin, ini)       ((fin) - (ini))
+ #define TIMER_RES_DIVIDER          1
+ #define SAMPLE_TIME_IMPLEMENTATION 1
+-#define EE_TICKS_PER_SEC           (50000000)
++#define EE_TICKS_PER_SEC           (100000)
+ 
+ /** Define Host specific (POSIX), or target specific global time variables. */
+ static CORETIMETYPE start_time_val, stop_time_val;
