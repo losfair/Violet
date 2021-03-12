@@ -17,6 +17,13 @@ Violet is a dual-issue superscalar RISC-V processor for educational purpose, wri
 
 ![Architecture](res/Violet.svg)
 
+## Not yet implemented
+
+- Interrupts
+- RISC-V Privileded Architecture
+- ISA Extensions other than M
+- Instruction and data caches
+
 ## Verification
 
 Violet is verified using cosimulation with [a software model](https://github.com/losfair/violet-cosim) written in Rust. Verification isn't extensive though - currently
