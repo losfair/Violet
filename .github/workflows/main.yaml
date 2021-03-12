@@ -53,7 +53,7 @@ jobs:
         run: |
           git clone https://github.com/losfair/coremark-violet
           cd coremark-violet
-          git checkout 3be70971f8f57e354c1285e3b56d2247e5c234dc
+          git checkout 1b62eaf4af43ae917b0720ed5393a2727d10d771
           patch -p1 -i ../test/coremark.diff
       - name: Install packages
         run: sudo apt install gcc-riscv64-unknown-elf build-essential
