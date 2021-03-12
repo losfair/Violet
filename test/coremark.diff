@@ -7,7 +7,7 @@ index 2c85b82..2fe7c85 100644
  #define TIMER_RES_DIVIDER          1
  #define SAMPLE_TIME_IMPLEMENTATION 1
 -#define EE_TICKS_PER_SEC           (50000000)
-+#define EE_TICKS_PER_SEC           (100000)
++#define EE_TICKS_PER_SEC           (500000)
  
  /** Define Host specific (POSIX), or target specific global time variables. */
  static CORETIMETYPE start_time_val, stop_time_val;
