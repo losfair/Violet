@@ -9,7 +9,7 @@ Violet is a dual-issue superscalar RISC-V processor for educational purpose, wri
 - RV32IM
 - 7-stage superscalar pipeline with in-order issue and "almost-in-order" commit
 - BTB and GShare branch predictor
-- Runs at 110 MHz on Artix-7
+- Runs at 70-110 MHz on Artix-7 depending on configuration
 - [3.76 CoreMark/MHz](https://github.com/losfair/Violet/runs/2093355709)
 - Configurable
 
