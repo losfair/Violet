@@ -14,6 +14,7 @@ data Metadata = Metadata {
     exceptionResolved :: Bool,
     earlyRectifyApplied :: Bool,
     globalHistory :: GlobalHistory,
+    icMiss :: Bool,
     isValidInst :: Bool
 } deriving (Generic, NFDataX, Show)
 data BackendCmd = NoCmd | ApplyBranch (PC, (PC, PredictionPref))
@@ -32,10 +33,10 @@ data GlobalHistory = GlobalHistory (BitVector GlobalHistoryBits)
     deriving (Generic, NFDataX, Show)
 
 emptyMetadata :: Metadata
-emptyMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, isValidInst = False }
+emptyMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, icMiss = False, isValidInst = False }
 
 validMetadata :: Metadata
-validMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, isValidInst = True }
+validMetadata = Metadata { branchPredicted = Nothing, exceptionResolved = False, earlyRectifyApplied = False, globalHistory = GlobalHistory 0, icMiss = False, isValidInst = True }
 
 nopInst :: Inst
 nopInst = 0b0010011 -- addi x0, x0, 0

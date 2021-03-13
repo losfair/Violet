@@ -110,14 +110,17 @@ decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
 decodeDep :: FifoT.FifoItem
           -> FifoT.FifoItem
           -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
-decodeDep a b = case (inst1, inst2) of
-    (Just ll, Just rr) -> decodeDep' ll rr
-    (Just ll, Nothing) -> (decode ll, (emptyActivation, layoutNoReg), CanConcurrentIssue)
-    (Nothing, Just rr) -> ((emptyActivation, layoutNoReg), decode rr, CanConcurrentIssue)
-    (Nothing, Nothing) -> ((emptyActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
+decodeDep a b = case (inst1, inst2, icMiss a) of
+    (_, _, True) -> ((ctrlActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
+    (Just ll, Just rr, _) -> decodeDep' ll rr
+    (Just ll, Nothing, _) -> (decode ll, (emptyActivation, layoutNoReg), CanConcurrentIssue)
+    (Nothing, Just rr, _) -> ((emptyActivation, layoutNoReg), decode rr, CanConcurrentIssue)
+    (Nothing, Nothing, _) -> ((emptyActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
     where
         inst1 = selInst a
         inst2 = selInst b
+        icMiss (FifoT.Item (_, _, md)) = if FetchT.icMiss md then True else False
+        icMiss FifoT.Bubble = False
         selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then Just x else Nothing
         selInst FifoT.Bubble = Nothing
 
