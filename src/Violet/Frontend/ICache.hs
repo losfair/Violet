@@ -4,9 +4,10 @@ import Clash.Prelude
 import Violet.Types.ICache
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
+import qualified Violet.Trace as T
 
 emptyResultPair :: ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
-emptyResultPair = ((0, undefined, FetchT.emptyMetadata), (0, undefined, FetchT.emptyMetadata))
+emptyResultPair = ((0, FetchT.nopInst, FetchT.emptyMetadata), (0, FetchT.nopInst, FetchT.emptyMetadata))
 
 icache :: HiddenClockResetEnable dom
        => ICacheIssueAccess dom
@@ -15,7 +16,7 @@ icache :: HiddenClockResetEnable dom
        -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
        -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem), FetchT.GlobalHistory)
-icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
+icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = T.traceValue "ICache.output" <$> bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
@@ -50,8 +51,8 @@ icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg,
         regIssuePorts = register (FifoT.Bubble, FifoT.Bubble) issuePorts
 
         -- Reduce latency for predicted branches by one cycle
-        -- (pdCmdReg, pdAckReg) = unbundle $ FifoT.gatedRegister (FetchT.NoPreDecCmd, FetchT.NoPreDecAck) pushCap $ bundle (pdCmd, pdAck)
-        (pdCmdReg, pdAckReg) = (pdCmd, pdAck)
+        (pdCmdReg, pdAckReg) = unbundle $ FifoT.gatedRegister (FetchT.NoPreDecCmd, FetchT.NoPreDecAck) pushCap $ bundle (pdCmd, pdAck)
+        -- (pdCmdReg, pdAckReg) = (pdCmd, pdAck)
 
         rectifyApplyBuf = FifoT.gatedRegister False pushCap $ fmap f $ bundle (rectifyApplyBuf, delayedFetchMd, pdCmd)
             where
@@ -65,7 +66,7 @@ icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg,
 
 decodeAccessResult :: (Maybe (BitVector 64), (FetchT.PC, FetchT.Metadata))
                    -> ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
-decodeAccessResult (Nothing, _) = ((0, undefined, FetchT.validMetadata { FetchT.icMiss = True }), (0, undefined, FetchT.emptyMetadata))
+decodeAccessResult (Nothing, (pc, _)) = ((pc, FetchT.nopInst, FetchT.validMetadata { FetchT.icMiss = True }), (0, FetchT.nopInst, FetchT.emptyMetadata))
 decodeAccessResult (Just rawRes, (pc, fetchMeta)) = ((pc1, inst1, md1), (pc2, inst2, md2))
     where
         hasOffset = testBit pc 2

@@ -14,12 +14,12 @@ data FunctionUnitActivation = FunctionUnitActivation {
     fuLateBranch2 :: Maybe IssuePort,
     fuMem1 :: Maybe IssuePort,
     fuCtrl :: Maybe (IssuePort, ControlIssue)
-} deriving (Generic, NFDataX)
+} deriving (Generic, NFDataX, Show)
 
 type IssuePort = (FetchT.PC, FetchT.Inst, FetchT.Metadata)
 
 data ControlIssue = CtrlNormal | CtrlDecodeException | CtrlFetchException
-    deriving (Generic, NFDataX)
+    deriving (Generic, NFDataX, Show)
 
 data ActivationMask = ActivationMask {
     amInt1 :: Bool,
@@ -32,4 +32,4 @@ data ActivationMask = ActivationMask {
     amLateBranch2 :: Bool,
     amMem1 :: Bool,
     amCtrl :: Maybe ControlIssue
-} deriving (Generic, NFDataX)
+} deriving (Generic, NFDataX, Show)

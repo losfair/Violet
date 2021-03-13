@@ -13,6 +13,7 @@ import qualified Violet.Types.Ctrl as CtrlT
 import qualified Debug.Trace
 import qualified Prelude
 import qualified Violet.Config as Config
+import qualified Violet.Trace as T
 
 data LateActivationType = NoLate | MemLoad GprT.RegIndex | LateAlu GprT.RegIndex
     deriving (Generic, NFDataX, Eq)
@@ -56,7 +57,7 @@ decode :: (FetchT.Inst, FetchT.Metadata) -> (Activation, RegLayout)
 -- special one.
 decode (_, md) | FetchT.icMiss md = (ctrlActivation, layoutNoReg)
 
-decode (inst, _) = case slice d6 d0 inst of
+decode (inst, _) = T.traceValue "Issue.decode" $ case slice d6 d0 (T.traceValue "Issue.decode.inst" inst) of
     0b0110111 -> (intActivation, layoutRd) -- lui
     0b0010111 -> (intActivation, layoutRd) -- auipc
     0b1101111 -> (jalActivation, layoutRd) -- jal
@@ -129,11 +130,13 @@ decodeDep a b = case (inst1, inst2) of
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
        -> ((IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq)), IssueOutput)
-issue' (state, port1, port2, am, (recovery, popReq)) (item1, item2, ctrlBusy) =
+issue' (state, port1, port2, am, (recovery, popReq)) (item1_, item2_, ctrlBusy) =
     ((state', port1', port2', am', (recovery', popReq')), (((port1, port2), am), recovery, recovery', popReq))
     where
         -- item1 = Debug.Trace.trace ("Item1: " Prelude.++ show item1_) item1_
         -- item2 = Debug.Trace.trace ("Item2: " Prelude.++ show item2_) item2_
+        item1 = T.traceValue "Issue.item1" item1_
+        item2 = T.traceValue "Issue.item2" item2_
         ((act1, layout1), (act2, layout2), concurrency) = decodeDep item1 item2
         exceptionResolvedAt1 = itemWantsExceptionResolution item1
         exceptionResolvedAt2 = itemWantsExceptionResolution item2
