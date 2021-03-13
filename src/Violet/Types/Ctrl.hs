@@ -19,7 +19,7 @@ data SystemBusIn = SystemBusIn {
 } deriving (Generic, NFDataX)
 
 data IcRefillIn = IcRefillIn {
-    iIcRefillValid :: BitVector 32,
+    iIcRefillValid :: Bool,
     iIcRefillAddr :: BitVector 32,
     iIcRefillData :: BitVector 32
 } deriving (Generic, NFDataX)
