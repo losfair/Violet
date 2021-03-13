@@ -6,4 +6,7 @@ build-core:
 build-verilator: build-core
 	./verilator_build.sh
 
+build-iverilog: build-core
+	iverilog -c ./simulate.list -o iverilog-sim.elf
+
 .PHONY: build-core build-verilator

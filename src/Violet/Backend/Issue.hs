@@ -51,30 +51,27 @@ layoutRs1Rs2 = RegLayout { hasRd = False, hasRs1 = True, hasRs2 = True }
 layoutNoReg = RegLayout { hasRd = False, hasRs1 = False, hasRs2 = False }
 
 decode :: FetchT.Inst -> (Activation, RegLayout)
-decode inst =
-    if inst == FetchT.nopInst then
-        (emptyActivation, layoutNoReg)
-    else case slice d6 d0 inst of
-        0b0110111 -> (intActivation, layoutRd) -- lui
-        0b0010111 -> (intActivation, layoutRd) -- auipc
-        0b1101111 -> (jalActivation, layoutRd) -- jal
-        0b1100111 -> (jalActivation, layoutRdRs1) -- jalr
-        0b1100011 -> (jActivation, layoutRs1Rs2) -- beq/bne/blt/bge/bltu/bgeu
-        0b0000011 -> (loadActivation, layoutRdRs1) -- load
-        0b0100011 -> (storeActivation, layoutRs1Rs2) -- store
-        0b0010011 -> (intActivation, layoutRdRs1) -- ALU with imm
-        0b0110011 -> case slice d31 d25 inst of
-            0b0000001 -> case slice d14 d14 inst of
-                0b0 -> -- mul
-                    if Config.mulInAlu && slice d13 d12 inst == 0 then
-                        (intActivation, layoutRdRs1Rs2)
-                    else
-                        (ctrlActivation, layoutRdRs1Rs2)
-                0b1 -> (ctrlActivation, layoutRdRs1Rs2) -- div
-            _ -> (intActivation, layoutRdRs1Rs2)
-        0b0001111 -> (ctrlActivation, layoutRdRs1) -- fence
-        0b1110011 -> (ctrlActivation, layoutNoReg) -- ecall/ebreak
-        _ -> (excActivation, layoutNoReg)
+decode inst = case slice d6 d0 inst of
+    0b0110111 -> (intActivation, layoutRd) -- lui
+    0b0010111 -> (intActivation, layoutRd) -- auipc
+    0b1101111 -> (jalActivation, layoutRd) -- jal
+    0b1100111 -> (jalActivation, layoutRdRs1) -- jalr
+    0b1100011 -> (jActivation, layoutRs1Rs2) -- beq/bne/blt/bge/bltu/bgeu
+    0b0000011 -> (loadActivation, layoutRdRs1) -- load
+    0b0100011 -> (storeActivation, layoutRs1Rs2) -- store
+    0b0010011 -> (intActivation, layoutRdRs1) -- ALU with imm
+    0b0110011 -> case slice d31 d25 inst of
+        0b0000001 -> case slice d14 d14 inst of
+            0b0 -> -- mul
+                if Config.mulInAlu && slice d13 d12 inst == 0 then
+                    (intActivation, layoutRdRs1Rs2)
+                else
+                    (ctrlActivation, layoutRdRs1Rs2)
+            0b1 -> (ctrlActivation, layoutRdRs1Rs2) -- div
+        _ -> (intActivation, layoutRdRs1Rs2)
+    0b0001111 -> (ctrlActivation, layoutRdRs1) -- fence
+    0b1110011 -> (ctrlActivation, layoutNoReg) -- ecall/ebreak
+    _ -> (excActivation, layoutNoReg)
 
 dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
 dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
@@ -113,12 +110,16 @@ decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
 decodeDep :: FifoT.FifoItem
           -> FifoT.FifoItem
           -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
-decodeDep a b = decodeDep' inst1 inst2
+decodeDep a b = case (inst1, inst2) of
+    (Just ll, Just rr) -> decodeDep' ll rr
+    (Just ll, Nothing) -> (decode ll, (emptyActivation, layoutNoReg), CanConcurrentIssue)
+    (Nothing, Just rr) -> ((emptyActivation, layoutNoReg), decode rr, CanConcurrentIssue)
+    (Nothing, Nothing) -> ((emptyActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
     where
         inst1 = selInst a
         inst2 = selInst b
-        selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then x else FetchT.nopInst
-        selInst FifoT.Bubble = FetchT.nopInst
+        selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then Just x else Nothing
+        selInst FifoT.Bubble = Nothing
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
        -> IssueInput
@@ -234,7 +235,7 @@ genIssuePort item = case item of
     _ -> emptyIssuePort
 
 emptyIssuePort :: IssuePort
-emptyIssuePort = (0, FetchT.nopInst, FetchT.emptyMetadata)
+emptyIssuePort = (0, undefined, FetchT.emptyMetadata)
 
 emptyActivationMask :: ActivationMask
 emptyActivationMask = ActivationMask {
