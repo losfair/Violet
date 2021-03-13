@@ -50,8 +50,13 @@ layoutRdRs1Rs2 = RegLayout { hasRd = True, hasRs1 = True, hasRs2 = True }
 layoutRs1Rs2 = RegLayout { hasRd = False, hasRs1 = True, hasRs2 = True }
 layoutNoReg = RegLayout { hasRd = False, hasRs1 = False, hasRs2 = False }
 
-decode :: FetchT.Inst -> (Activation, RegLayout)
-decode inst = case slice d6 d0 inst of
+decode :: (FetchT.Inst, FetchT.Metadata) -> (Activation, RegLayout)
+
+-- This requires `FetchT.isValidInst == True`: IC miss is still a "valid instruction", although a
+-- special one.
+decode (_, md) | FetchT.icMiss md = (ctrlActivation, layoutNoReg)
+
+decode (inst, _) = case slice d6 d0 inst of
     0b0110111 -> (intActivation, layoutRd) -- lui
     0b0010111 -> (intActivation, layoutRd) -- auipc
     0b1101111 -> (jalActivation, layoutRd) -- jal
@@ -73,8 +78,8 @@ decode inst = case slice d6 d0 inst of
     0b1110011 -> (ctrlActivation, layoutNoReg) -- ecall/ebreak
     _ -> (excActivation, layoutNoReg)
 
-dep :: (FetchT.Inst, Activation, RegLayout) -> (FetchT.Inst, Activation, RegLayout) -> Concurrency
-dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
+dep :: ((FetchT.Inst, FetchT.Metadata), Activation, RegLayout) -> ((FetchT.Inst, FetchT.Metadata), Activation, RegLayout) -> Concurrency
+dep ((inst1, _), act1, layout1) ((inst2, _), act2, layout2) = if anyHazard then NoConcurrentIssue else CanConcurrentIssue
     where
         memConflict = actStore act2 || actLoad act2 -- load/store can only issue on port 1
         ctrlConflict = actCtrl act1 || actCtrl act2
@@ -98,8 +103,8 @@ dep (inst1, act1, layout1) (inst2, act2, layout2) = if anyHazard then NoConcurre
 
         anyHazard = structuralHazard || regHazard
 
-decodeDep' :: FetchT.Inst
-           -> FetchT.Inst
+decodeDep' :: (FetchT.Inst, FetchT.Metadata)
+           -> (FetchT.Inst, FetchT.Metadata)
            -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
 decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
     where
@@ -110,18 +115,15 @@ decodeDep' a b = ((act1, layout1), (act2, layout2), conc)
 decodeDep :: FifoT.FifoItem
           -> FifoT.FifoItem
           -> ((Activation, RegLayout), (Activation, RegLayout), Concurrency)
-decodeDep a b = case (inst1, inst2, icMiss a) of
-    (_, _, True) -> ((ctrlActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
-    (Just ll, Just rr, _) -> decodeDep' ll rr
-    (Just ll, Nothing, _) -> (decode ll, (emptyActivation, layoutNoReg), CanConcurrentIssue)
-    (Nothing, Just rr, _) -> ((emptyActivation, layoutNoReg), decode rr, CanConcurrentIssue)
-    (Nothing, Nothing, _) -> ((emptyActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
+decodeDep a b = case (inst1, inst2) of
+    (Just ll, Just rr) -> decodeDep' ll rr
+    (Just ll, Nothing) -> (decode ll, (emptyActivation, layoutNoReg), CanConcurrentIssue)
+    (Nothing, Just rr) -> ((emptyActivation, layoutNoReg), decode rr, CanConcurrentIssue)
+    (Nothing, Nothing) -> ((emptyActivation, layoutNoReg), (emptyActivation, layoutNoReg), CanConcurrentIssue)
     where
         inst1 = selInst a
         inst2 = selInst b
-        icMiss (FifoT.Item (_, _, md)) = if FetchT.icMiss md then True else False
-        icMiss FifoT.Bubble = False
-        selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then Just x else Nothing
+        selInst (FifoT.Item (_, x, md)) = if FetchT.isValidInst md then Just (x, md) else Nothing
         selInst FifoT.Bubble = Nothing
 
 issue' :: (IssueState, IssuePort, IssuePort, ActivationMask, (PipeT.Recovery, FifoT.FifoPopReq))
