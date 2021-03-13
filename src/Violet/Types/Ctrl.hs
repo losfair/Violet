@@ -14,7 +14,14 @@ data SystemBusOut = SystemBusOut {
 data SystemBusIn = SystemBusIn {
     iFastBus :: FastBusIn,
     iIoBus :: IOBusIn,
+    iIcRefill :: IcRefillIn,
     iIcRefillReady :: Bool
+} deriving (Generic, NFDataX)
+
+data IcRefillIn = IcRefillIn {
+    iIcRefillValid :: BitVector 32,
+    iIcRefillAddr :: BitVector 32,
+    iIcRefillData :: BitVector 32
 } deriving (Generic, NFDataX)
 
 data IcRefillOut = IcRefillOut {

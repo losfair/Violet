@@ -52,8 +52,8 @@ ctrl' :: (CtrlState, CtrlBusy, MultiplierInput)
           PerfCounterT.PerfCounters,
           FastBusOut
           )
-      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut, FastBusIn))
-ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, perfCtr, fastBusOut) = ((state', busy', mulInput'), (commit', busy, mulInput, bus, iFastBus sysIn))
+      -> ((CtrlState, CtrlBusy, MultiplierInput), (PipeT.Commit, CtrlBusy, MultiplierInput, SystemBusOut, FastBusIn, IcRefillIn))
+ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, perfCtr, fastBusOut) = ((state', busy', mulInput'), (commit', busy, mulInput, bus, iFastBus sysIn, iIcRefill sysIn))
     where
         (csrNextState, csrCommit) = case state of
             SCsrOp pc index op rd rs1OrUimm ->
@@ -195,11 +195,11 @@ ctrl :: HiddenClockResetEnable dom
      -> Signal dom SystemBusIn
      -> Signal dom PerfCounterT.PerfCounters
      -> Signal dom FastBusOut
-     -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut, FastBusIn)
-ctrl issue gprPair earlyExc sysIn perfCtr fastBusOut = bundle $ (commit, busy, sysOut, fastBusIn)
+     -> Signal dom (PipeT.Commit, CtrlBusy, SystemBusOut, FastBusIn, IcRefillIn)
+ctrl issue gprPair earlyExc sysIn perfCtr fastBusOut = bundle $ (commit, busy, sysOut, fastBusIn, icRefillIn)
     where
         m = mealy ctrl' (SIdle, Idle, undefinedMultiplierInput)
-        (commit, busy, mulInput, sysOut, fastBusIn) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn, perfCtr, fastBusOut)
+        (commit, busy, mulInput, sysOut, fastBusIn, icRefillIn) = unbundle $ m $ bundle (issue, gprPair, earlyExc, mulOutput, sysIn, perfCtr, fastBusOut)
         mulOutput = multiplier mulInput
 
 multiplier :: HiddenClockResetEnable dom

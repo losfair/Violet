@@ -23,7 +23,7 @@ violetCore' :: HiddenClockResetEnable dom
 violetCore' sysIn = bundle (commitLog, sysOut)
     where
         frontendOut = Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.issueAccess beCmd fifoPushCap historyUpd
-        (beCmd, commitLog, fifoPushCap, sysOut, historyUpd) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
+        (beCmd, commitLog, fifoPushCap, sysOut, historyUpd, icRefillIn) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
 
 {-# ANN violetCore
     (Synthesize {

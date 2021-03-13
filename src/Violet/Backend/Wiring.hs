@@ -33,8 +33,8 @@ wiring :: HiddenClockResetEnable dom
        => a
        -> Signal dom (FifoT.FifoItem, FifoT.FifoItem)
        -> Signal dom CtrlT.SystemBusIn
-       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut, Maybe FetchT.HistoryUpdate)
-wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut, historyUpd)
+       -> Signal dom (FetchT.BackendCmd, CommitT.CommitLog, FifoT.FifoPushCap, CtrlT.SystemBusOut, Maybe FetchT.HistoryUpdate, CtrlT.IcRefillIn)
+wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap, sysOut, historyUpd, icRefillIn)
     where
         (frontPush1, frontPush2) = unbundle frontPush
         (issueInput1, issueInput2, fifoPushCap) = unbundle $ Violet.Backend.Fifo.fifo $ bundle (frontPush1, frontPush2, fifoPopReq)
@@ -49,7 +49,7 @@ wiring dcacheImpl frontPush sysIn = bundle $ (backendCmd, commitLog, fifoPushCap
         branchUnit1 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch1 fuActivation) gprPort1
         branchUnit2 = Violet.Backend.Branch.branch (fmap IssueT.fuBranch2 fuActivation) gprPort2
         (dcacheUnit1, dcWeReq, fastBusOut) = Violet.Backend.DCache.dcache dcacheImpl (fmap IssueT.fuMem1 fuActivation) gprPort1 dcWeCommit fastBusIn
-        (ctrlUnit, ctrlBusy, sysOut, fastBusIn) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters fastBusOut
+        (ctrlUnit, ctrlBusy, sysOut, fastBusIn, icRefillIn) = unbundle $ Violet.Backend.Ctrl.ctrl (fmap IssueT.fuCtrl fuActivation) gprPort1 earlyExc sysIn perfCounters fastBusOut
 
         -- Late ALUs.
         lateBypassInput = register Violet.Backend.Issue.emptyBypassInput $ register Violet.Backend.Issue.emptyBypassInput bypassInput
