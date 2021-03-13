@@ -6,6 +6,7 @@ import Violet.Types.ICache
 import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Ctrl as CtrlT
+import qualified Violet.Trace as T
 
 -- bits 31:(SizeBits + 3) -> Tag
 -- bits (SizeBits + 2):3 -> Data Index
@@ -17,26 +18,28 @@ type LineBits = 2
 type TagBits = (32 - (SizeBits + 3))
 
 data TagEntry = Tagged (BitVector TagBits) | Untagged
-    deriving (Generic, NFDataX, Eq)
+    deriving (Generic, NFDataX, Eq, Show)
 
 issueAccess :: HiddenClockResetEnable dom
     => Signal dom CtrlT.IcRefillIn
     -> ICacheIssueAccess dom
-issueAccess refillIn pc pushCap = dataValue
+issueAccess refillIn pc_ pushCap = dataValue
     where
         enable = (hideEnable genEnable) pushCap
+        pc = T.traceValue "DirectMappedICache.pc" <$> pc_
         rdExpectedTag = fmap (unpack . getTagValue) pc
         rdDataIndex = fmap (unpack . getDataIndex) pc
         rdTagIndex = fmap (unpack . getTagIndex) pc
-        rdActualTag = (exposeEnable (blockRamPow2 (repeat Untagged) rdTagIndex tagWr)) enable
-        lowerDataPort = (exposeEnable (blockRamU NoClearOnReset (SNat :: SNat (2^SizeBits)) undefined rdDataIndex lowerDataWr)) enable
-        upperDataPort = (exposeEnable (blockRamU NoClearOnReset (SNat :: SNat (2^SizeBits)) undefined rdDataIndex upperDataWr)) enable
+        rdActualTag = T.traceValue "DirectMappedICache.actualTagRead" <$> blockRamPow2 (repeat Untagged) rdTagIndex tagWr
+        lowerDataPort = T.traceValue "DirectMappedICache.lowerDataPort" <$> blockRamU NoClearOnReset (SNat :: SNat (2^SizeBits)) undefined rdDataIndex lowerDataWr
+        upperDataPort = T.traceValue "DirectMappedICache.upperDataPort" <$> blockRamU NoClearOnReset (SNat :: SNat (2^SizeBits)) undefined rdDataIndex upperDataWr
 
-        tagHit = (\(a, b) -> a == b) <$> bundle (Tagged <$> rdExpectedTag, rdActualTag)
-        dataValue = gate <$> bundle (tagHit, upperDataPort, lowerDataPort)
+        tagHit = T.traceValue "DirectMappedICache.tagHit" <$> (\(a, b) -> a == b) <$> T.traceValue "DirectMappedICache.tagHit.input" <$> bundle (Tagged <$> rdExpectedTag, rdActualTag)
+        firstCycle = register True $ pure False
+        dataValue = T.traceValue "DirectMappedICache.dataValue" <$> gate <$> bundle (firstCycle, tagHit, upperDataPort, lowerDataPort)
             where
-                gate (tagHit, upperDataPort, lowerDataPort) =
-                    if tagHit then
+                gate (firstCycle, tagHit, upperDataPort, lowerDataPort) =
+                    if not firstCycle && tagHit then
                         Just (upperDataPort ++# lowerDataPort)
                     else
                         Nothing
@@ -47,8 +50,8 @@ issueAccess refillIn pc pushCap = dataValue
                 extract refillIn = testBit (CtrlT.iIcRefillAddr refillIn) 2
         dataWrEven = not <$> dataWrOdd
 
-        lowerDataWr = transformDataWr <$> bundle (refillIn, dataWrEven)
-        upperDataWr = transformDataWr <$> bundle (refillIn, dataWrOdd)
+        lowerDataWr = T.traceValue "DirectMappedICache.lowerDataWr" <$> transformDataWr <$> bundle (refillIn, dataWrEven)
+        upperDataWr = T.traceValue "DirectMappedICache.upperDataWr" <$> transformDataWr <$> bundle (refillIn, dataWrOdd)
         tagWr = transformTagWr <$> refillIn
 
         transformDataWr :: (CtrlT.IcRefillIn, Bool) -> Maybe (Unsigned SizeBits, BitVector 32)

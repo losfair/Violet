@@ -14,10 +14,12 @@ import qualified Violet.Types.Fifo as FifoT
 import qualified Violet.Types.Ctrl as CtrlT
 import qualified Violet.IP.StaticIM
 import qualified Violet.IP.StaticDM
+import qualified Violet.IP.DirectMappedICache
 import qualified Violet.Frontend.Wiring
 import qualified Violet.Backend.Wiring
 import qualified System.IO
 import qualified System.IO.Unsafe
+import qualified Violet.Trace as T
 
 test :: Prelude.IO ()
 test = f l
@@ -43,7 +45,8 @@ runCore' :: HiddenClockResetEnable dom
         => Signal dom ((FifoT.FifoItem, FifoT.FifoItem), CommitT.CommitLog)
 runCore' = bundle (frontendOut, commitLog)
     where
-        frontendOut = Violet.Frontend.Wiring.wiring Violet.IP.StaticIM.issueAccess beCmd fifoPushCap historyUpd
+        icacheInst = Violet.IP.DirectMappedICache.issueAccess icRefillIn
+        frontendOut = Violet.Frontend.Wiring.wiring icacheInst beCmd fifoPushCap historyUpd
         (beCmd, commitLog, fifoPushCap, sysOut, historyUpd, icRefillIn) = unbundle $ Violet.Backend.Wiring.wiring Violet.IP.StaticDM.StaticDM frontendOut sysIn
         sysIn = sysbusProvider sysOut
 
@@ -52,30 +55,87 @@ type CycleCounter = BitVector 64
 sysbusProvider :: HiddenClockResetEnable dom
                => Signal dom CtrlT.SystemBusOut
                -> Signal dom CtrlT.SystemBusIn
-sysbusProvider = mealy sysbusProvider' (False, emptySystemBusIn, 0)
-
-sysbusProvider' :: (Bool, CtrlT.SystemBusIn, CycleCounter)
-                -> CtrlT.SystemBusOut
-                -> ((Bool, CtrlT.SystemBusIn, CycleCounter), CtrlT.SystemBusIn)
-sysbusProvider' (active, sysIn, cycles) sysOut = ((active', sysIn', cycles + 1), sysIn)
+sysbusProvider sysOut = bundleSysbus <$> bundle (ioIn, icRefillIn, icRefillReadyIn, fastIn)
     where
-        oIoBus = CtrlT.oIoBus sysOut
-        (active', sysIn') = case active of
-            True -> (if CtrlT.oIoValid oIoBus then True else False, emptySystemBusIn)
-            False -> (if CtrlT.oIoValid oIoBus then True else False, CtrlT.SystemBusIn { CtrlT.iIoBus = ioBus' })
+        ioIn = (mealy iobusProvider (False, emptyIOBusIn, 0)) ioOut
+        (icRefillIn, icRefillReadyIn) = unbundle $ icRefillProvider icRefillOut
+        fastIn = fastbusProvider fastOut
 
-        ioBus' = case CtrlT.oIoValid oIoBus of
-            True -> case CtrlT.oIoAddr oIoBus of
-                0xfe000000 -> case CtrlT.oIoWrite oIoBus of
-                    True -> System.IO.Unsafe.unsafePerformIO $ doPutChar (chr (fromIntegral (CtrlT.oIoData oIoBus)))
+        (ioOut, icRefillOut, fastOut) = unbundle $ unbundleSysbus <$> sysOut
+        unbundleSysbus x = (CtrlT.oIoBus x, CtrlT.oIcRefill x, CtrlT.oFastBus x)
+        bundleSysbus (io, icRefillIn, icRefillReadyIn, fastIn) =
+            CtrlT.SystemBusIn {
+                CtrlT.iIoBus = io,
+                CtrlT.iIcRefill = icRefillIn,
+                CtrlT.iIcRefillReady = icRefillReadyIn,
+                CtrlT.iFastBus = fastIn
+            }
+
+fastbusProvider :: HiddenClockResetEnable dom
+    => Signal dom CtrlT.FastBusOut
+    -> Signal dom CtrlT.FastBusIn
+fastbusProvider fastOut = pure (CtrlT.FastBusIn { CtrlT.iFastReady = True, CtrlT.iFastData = 0 })
+
+icRefillProvider :: HiddenClockResetEnable dom
+    => Signal dom CtrlT.IcRefillOut
+    -> Signal dom (CtrlT.IcRefillIn, Bool)
+icRefillProvider refillOut = bundle (refillIn, ready)
+    where
+        readValue = blockRamFilePow2 "im.txt" readAddr (pure Nothing)
+        refillIn = f <$> bundle (counter, lastReadAddr, readValue)
+            where
+                f (counter, lastReadAddr, readValue) =
+                    CtrlT.IcRefillIn {
+                        CtrlT.iIcRefillValid = counter /= Nothing,
+                        CtrlT.iIcRefillAddr = pack lastReadAddr,
+                        CtrlT.iIcRefillData = readValue
+                    }
+
+        ready = register False $ f <$> bundle (ready, counter, refillOut)
+            where
+                f :: (Bool, Maybe (Index 8), CtrlT.IcRefillOut) -> Bool
+                f (ready, counter, refillOut) =
+                    case (ready, CtrlT.oIcRefillValid refillOut) of
+                        (False, _) -> counter == Just maxBound
+                        (True, False) -> False
+                        (True, True) -> True
+        counter = register Nothing nextCounter
+        nextCounter = f <$> bundle (counter, refillOut, ready)
+            where
+                f :: (Maybe (Index 8), CtrlT.IcRefillOut, Bool) -> Maybe (Index 8)
+                f (counter, refillOut, ready) =
+                    case counter of
+                        Just x -> if x == maxBound then Nothing else Just (x + 1)
+                        Nothing -> if CtrlT.oIcRefillValid refillOut && not ready then Just 0 else Nothing
+        lastReadAddr = register undefined readAddr
+        readAddr = f <$> bundle (refillOut, nextCounter)
+            where
+                f :: (CtrlT.IcRefillOut, Maybe (Index 8)) -> Unsigned 32
+                f (_, Nothing) = undefined
+                f (refillOut, Just nextCounter) = unpack (CtrlT.oIcRefillAddr refillOut + shiftL (fromIntegral nextCounter :: BitVector 32) 2)
+
+
+iobusProvider :: (Bool, CtrlT.IOBusIn, CycleCounter)
+    -> CtrlT.IOBusOut
+    -> ((Bool, CtrlT.IOBusIn, CycleCounter), CtrlT.IOBusIn)
+iobusProvider (active, ioIn, cycles) ioOut = ((active', ioIn', cycles + 1), ioIn)
+    where
+        (active', ioIn') = case active of
+            True -> (if CtrlT.oIoValid ioOut then True else False, emptyIOBusIn)
+            False -> (if CtrlT.oIoValid ioOut then True else False, ioBus')
+
+        ioBus' = case CtrlT.oIoValid ioOut of
+            True -> case CtrlT.oIoAddr ioOut of
+                0xfe000000 -> case CtrlT.oIoWrite ioOut of
+                    True -> System.IO.Unsafe.unsafePerformIO $ doPutChar (chr (fromIntegral (CtrlT.oIoData ioOut)))
                     False -> undefined -- read not allowed
-                0xfe000010 -> case CtrlT.oIoWrite oIoBus of
+                0xfe000010 -> case CtrlT.oIoWrite ioOut of
                     True -> undefined -- write not allowed
                     False -> CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = slice d31 d0 cycles }
-                0xfe000014 -> case CtrlT.oIoWrite oIoBus of
+                0xfe000014 -> case CtrlT.oIoWrite ioOut of
                     True -> undefined -- write not allowed
                     False -> CtrlT.IOBusIn { CtrlT.iIoReady = True, CtrlT.iIoData = slice d63 d32 cycles }
-                _ -> Trace.trace ("bad io address: " Prelude.++ (show $ CtrlT.oIoAddr oIoBus)) undefined -- bad address
+                _ -> Trace.trace ("bad io address: " Prelude.++ (show $ CtrlT.oIoAddr ioOut)) undefined -- bad address
             False -> emptyIOBusIn
 
 emptySystemBusIn = CtrlT.SystemBusIn {

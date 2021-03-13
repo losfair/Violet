@@ -8,7 +8,7 @@ type FifoBits = 5
 data FifoPushCap = CanPush | WillFull
     deriving (Generic, NFDataX, Eq, Show)
 data FifoPopReq = PopNothing | PopOne | PopTwo
-    deriving (Generic, NFDataX, Eq)
+    deriving (Generic, NFDataX, Eq, Show)
 data FifoItem = Item (FetchT.PC, FetchT.Inst, FetchT.Metadata) | Bubble
     deriving (Generic, NFDataX, Show)
 
