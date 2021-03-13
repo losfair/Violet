@@ -15,7 +15,7 @@ data = sys.stdin.buffer.read()
 while len(data) % 8 != 0:
     data += b"\x00"
 
-for i in range(0, 65536, 8):
+for i in range(0, 65536 * 4, 8):
     if i < len(data):
         x = int.from_bytes(data[i:i+8], "little")
     else:
