@@ -17,6 +17,7 @@ data Exception = EarlyExc EarlyException
 data ArchRegister = GPR GprT.RegIndex GprT.RegValue
     deriving (Generic, NFDataX)
 data EarlyException = DecodeFailure FetchT.PC
+    | ICMiss FetchT.PC
     | IOMemRead FetchT.PC GprT.RegIndex MemAddr
     | IOMemWrite FetchT.PC MemAddr MemData
     deriving (Generic, NFDataX, Eq)
