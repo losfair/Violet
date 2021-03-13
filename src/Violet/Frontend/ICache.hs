@@ -9,20 +9,19 @@ emptyResultPair :: ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, Fetch
 emptyResultPair = ((0, FetchT.nopInst, FetchT.emptyMetadata), (0, FetchT.nopInst, FetchT.emptyMetadata))
 
 icache :: HiddenClockResetEnable dom
-       => ICacheImpl a
-       => a
+       => ICacheIssueAccess dom
        -> Signal dom (FetchT.PC, FetchT.Metadata)
        -> Signal dom FetchT.PC
        -> Signal dom (Maybe Bool, Maybe Bool)
        -> Signal dom FifoT.FifoPushCap
        -> Signal dom (FetchT.PreDecodeCmd, FetchT.PreDecodeAck, (FifoT.FifoItem, FifoT.FifoItem), FetchT.GlobalHistory)
-icache impl fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
+icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg, pdAckReg, regIssuePorts, fmap FetchT.GlobalHistory globalHistory)
     where
         (fetchPC, _) = unbundle fetchReq
         alignedPC = fmap (\x -> slice d31 d3 x ++# 0) fetchPC
         delayedFetchReq = FifoT.gatedRegister (0, FetchT.emptyMetadata) pushCap fetchReq
         (_, delayedFetchMd) = unbundle delayedFetchReq
-        rawAccessRes = issueAccess impl alignedPC pushCap
+        rawAccessRes = icIssuer alignedPC pushCap
         accessRes = fmap decodeAccessResult $ bundle (rawAccessRes, delayedFetchReq)
 
         -- Global prediction.
