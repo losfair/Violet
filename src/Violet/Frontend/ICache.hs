@@ -6,7 +6,7 @@ import qualified Violet.Types.Fetch as FetchT
 import qualified Violet.Types.Fifo as FifoT
 
 emptyResultPair :: ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
-emptyResultPair = ((0, FetchT.nopInst, FetchT.emptyMetadata), (0, FetchT.nopInst, FetchT.emptyMetadata))
+emptyResultPair = ((0, undefined, FetchT.emptyMetadata), (0, undefined, FetchT.emptyMetadata))
 
 icache :: HiddenClockResetEnable dom
        => ICacheIssueAccess dom
@@ -65,7 +65,7 @@ icache icIssuer fetchReq btbPrediction bhtPrediction pushCap = bundle (pdCmdReg,
 
 decodeAccessResult :: (Maybe (BitVector 64), (FetchT.PC, FetchT.Metadata))
                    -> ((FetchT.PC, FetchT.Inst, FetchT.Metadata), (FetchT.PC, FetchT.Inst, FetchT.Metadata))
-decodeAccessResult (Nothing, _) = emptyResultPair
+decodeAccessResult (Nothing, _) = ((0, undefined, FetchT.validMetadata { FetchT.icMiss = True }), (0, undefined, FetchT.emptyMetadata))
 decodeAccessResult (Just rawRes, (pc, fetchMeta)) = ((pc1, inst1, md1), (pc2, inst2, md2))
     where
         hasOffset = testBit pc 2
