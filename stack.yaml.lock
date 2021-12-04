@@ -27,7 +27,7 @@ packages:
     hackage: clash-prelude-1.2.5@sha256:2ea4d0506adfccd0e817a67e47de132290a856535dd69bcc71e7fbce24ece3f2,15307
 snapshots:
 - completed:
-    size: 531674
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/2.yaml
-    sha256: 4b08fb9338ca297de7ade8318f4be1216f14dff8c0426c001fb7886ee88cb84a
-  original: lts-16.2
+    size: 567675
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/13.yaml
+    sha256: 84fa3ab606af79b1239ec213e8db5d49e4857f461eda9ac61fe589c967643b7d
+  original: lts-17.13
