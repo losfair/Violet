@@ -7,6 +7,8 @@ top top_0(
 );
 
 initial begin
+    $dumpfile("test.vcd");
+    $dumpvars(0, simulate);
     clk = 'b0;
 end
 

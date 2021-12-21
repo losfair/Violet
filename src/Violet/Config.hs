@@ -2,7 +2,7 @@ module Violet.Config where
 
 import Clash.Prelude
 
-mergePCIF1 = True
+mergePCIF1 = False
 lateALU = True
 enableBTB = True
 enableBHT = True

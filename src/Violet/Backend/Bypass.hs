@@ -7,6 +7,7 @@ import qualified Violet.Types.Pipe as PipeT
 import qualified Violet.Types.Issue as IssueT
 import qualified Violet.Types.Gpr as GprT
 import qualified Debug.Trace
+import qualified Violet.Trace as T
 
 bypassOne' :: KnownNat (n + 1)
            => (

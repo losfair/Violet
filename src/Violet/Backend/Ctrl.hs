@@ -127,7 +127,7 @@ ctrl' (state, busy, mulInput) (issue, (rs1V, rs2V), earlyExc, mulOut, sysIn, per
             SCsrOp pc index op dst rs1OrUimm ->
                 (csrNextState, csrCommit, Busy, undefinedMultiplierInput)
             SICMiss pc -> case iIcRefillReady sysIn of
-                True -> (SIdle, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc, Nothing)), Idle, undefinedMultiplierInput)
+                True -> (SWaitForEarlyExcAck, PipeT.Exc (pc, PipeT.EarlyExcResolution (pc, Nothing)), Idle, undefinedMultiplierInput)
                 False -> (state, PipeT.Bubble, Busy, undefinedMultiplierInput)
         defaultSystemBusOut = idleSystemBusOut { oFastBus = fastBusOut }
         bus = case state of

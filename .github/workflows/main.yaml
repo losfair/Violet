@@ -64,6 +64,7 @@ jobs:
           python3 ./Scripts/im_encode.py < coremark.bin > im.txt
           python3 ./Scripts/hexencode.py < coremark.bin > dm.txt
       - name: Run CoreMark
+        timeout-minutes: 3
         run: |
           chmod +x ./Vtop/Vtop
           ./Vtop/Vtop 2>&1 | tee run.log
